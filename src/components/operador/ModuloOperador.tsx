@@ -10,13 +10,19 @@ import {
 
 // B-02: human-readable status labels
 const STATUS_LABELS: Record<string, string> = {
-  CALLED:      'Llamado',
+  CALLED:       'Llamado',
   IN_ATTENTION: 'En Atención',
-  WAITING:     'En Espera',
-  ATTENDED:    'Atendido',
-  NO_SHOW:     'No se Presentó',
-  DERIVED:     'Derivado',
-  CANCELLED:   'Cancelado',
+  WAITING:      'En Espera',
+  ATTENDED:     'Atendido',
+  NO_SHOW:      'No se Presentó',
+  DERIVED:      'Derivado',
+  CANCELLED:    'Cancelado',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  URGENT:       'Urgente',
+  PREFERENTIAL: 'Preferencial',
+  NORMAL:       'Normal',
 };
 
 const priorityBadge = (level: string) => {
@@ -298,7 +304,7 @@ export const ModuloOperador: React.FC = () => {
                       {selectedRoom?.name}
                     </div>
                     <span className={`inline-block mt-1 text-xs font-black px-3 py-0.5 rounded-full ${priorityBadge(currentTicket.priorityLevel)}`}>
-                      {currentTicket.priorityLevel} · {currentTicket.priorityPoints} pts
+                      {PRIORITY_LABELS[currentTicket.priorityLevel] ?? currentTicket.priorityLevel} · {currentTicket.priorityPoints} pts
                     </span>
                   </div>
                 </div>

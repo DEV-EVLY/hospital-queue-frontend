@@ -22,6 +22,17 @@ const FormError: React.FC<{ msg: string | null; onDismiss: () => void }> = ({ ms
     </div>
   ) : null;
 
+const STATUS_LABELS: Record<string, string> = {
+  WAITING: 'En Espera', CALLED: 'Llamado', IN_ATTENTION: 'En Atención',
+  ATTENDED: 'Atendido', NO_SHOW: 'No se Presentó', DERIVED: 'Derivado', CANCELLED: 'Cancelado',
+};
+const PRIORITY_LABELS: Record<string, string> = {
+  URGENT: 'Urgente', PREFERENTIAL: 'Preferencial', NORMAL: 'Normal',
+};
+const CHANNEL_LABELS: Record<string, string> = {
+  KIOSK: 'Kiosko', OPERATOR: 'Operador', WEB: 'Web', HIS_AUTO: 'HIS Automático',
+};
+
 // ── Empty rule / service blank ────────────────────────────────────
 const BLANK_RULE = { code: '', name: '', description: '', condition: '', priorityPoints: 10, maxWaitMinutes: 60 };
 const BLANK_SERVICE = { name: '', ticketPrefix: '', iconName: 'stethoscope', estimatedMinutes: 20 };
@@ -584,14 +595,16 @@ export const AdminDashboard: React.FC = () => {
                     <tr key={i} className="hover:bg-slate-700/30">
                       <td className="py-3 px-3 font-mono font-black text-sky-400">{row.ticketCode}</td>
                       <td className="py-3 px-3">{row.medicalServiceName}</td>
-                      <td className="py-3 px-3 font-bold">{row.status}</td>
+                      <td className="py-3 px-3 font-bold">{STATUS_LABELS[row.status] ?? row.status}</td>
                       <td className="py-3 px-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           row.priorityLevel === 'URGENT' ? 'bg-rose-950 text-rose-300'
                           : row.priorityLevel === 'PREFERENTIAL' ? 'bg-amber-950 text-amber-300'
-                          : 'bg-slate-700 text-slate-300'}`}>{row.priorityLevel}</span>
+                          : 'bg-slate-700 text-slate-300'}`}>
+                          {PRIORITY_LABELS[row.priorityLevel] ?? row.priorityLevel}
+                        </span>
                       </td>
-                      <td className="py-3 px-3 font-mono">{row.channel}</td>
+                      <td className="py-3 px-3">{CHANNEL_LABELS[row.channel] ?? row.channel}</td>
                       <td className="py-3 px-3 font-mono font-bold text-amber-300">{fmtSeconds(row.waitTimeSeconds)}</td>
                       <td className="py-3 px-3 font-mono font-bold text-emerald-300">{fmtSeconds(row.attentionTimeSeconds)}</td>
                       <td className="py-3 px-3 font-mono text-slate-400">{row.reportDate}</td>

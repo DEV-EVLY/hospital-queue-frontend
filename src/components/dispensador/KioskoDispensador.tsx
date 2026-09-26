@@ -183,12 +183,16 @@ export const KioskoDispensador: React.FC = () => {
 
   const getServiceIcon = (iconName: string) => {
     switch (iconName) {
-      case 'activity':       return <Activity className="w-9 h-9 text-rose-600" />;
-      case 'stethoscope':    return <Stethoscope className="w-9 h-9 text-sky-600" />;
-      case 'baby':           return <Baby className="w-9 h-9 text-emerald-600" />;
-      case 'heart':          return <Heart className="w-9 h-9 text-pink-600" />;
-      case 'flask-conical':  return <FlaskConical className="w-9 h-9 text-purple-600" />;
-      default:               return <Smile className="w-9 h-9 text-amber-600" />;
+      case 'alert-circle':
+      case 'alert-triangle':
+      case 'activity':       return <Activity className="w-9 h-9 text-rose-500" />;
+      case 'stethoscope':    return <Stethoscope className="w-9 h-9 text-sky-500" />;
+      case 'baby':           return <Baby className="w-9 h-9 text-emerald-500" />;
+      case 'heart':          return <Heart className="w-9 h-9 text-pink-500" />;
+      case 'flask-conical':
+      case 'flask':          return <FlaskConical className="w-9 h-9 text-amber-500" />;
+      case 'smile':          return <Smile className="w-9 h-9 text-violet-500" />;
+      default:               return <Stethoscope className="w-9 h-9 text-slate-400" />;
     }
   };
 
@@ -238,11 +242,11 @@ export const KioskoDispensador: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center my-6">
+      <main className="flex-1 flex flex-col items-center justify-center my-6 gap-3">
 
-        {/* C-01: Registry warning — visible but non-blocking */}
+        {/* C-01: Registry warning — inline, non-blocking */}
         {registryWarning && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-start space-x-3 bg-amber-500/20 border border-amber-400/50 text-amber-200 rounded-2xl px-6 py-4 max-w-lg text-sm font-semibold shadow-xl">
+          <div className="w-full max-w-2xl flex items-start space-x-3 bg-amber-500/20 border border-amber-400/50 text-amber-200 rounded-2xl px-5 py-3 text-sm font-semibold">
             <Info className="w-5 h-5 shrink-0 mt-0.5" />
             <span>{registryWarning}</span>
           </div>
@@ -250,7 +254,7 @@ export const KioskoDispensador: React.FC = () => {
 
         {/* C-02: Inline error banner */}
         {errorMsg && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-10 flex items-start space-x-3 bg-rose-500/20 border border-rose-400/50 text-rose-200 rounded-2xl px-6 py-4 max-w-lg text-sm font-semibold shadow-xl">
+          <div className="w-full max-w-2xl flex items-start space-x-3 bg-rose-500/20 border border-rose-400/50 text-rose-200 rounded-2xl px-5 py-3 text-sm font-semibold">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>

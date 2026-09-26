@@ -1,7 +1,12 @@
 const BASE_URL = '/api';
 
-// C-03: dispatch event on 401 so App.tsx can force logout
-const dispatch401 = () => window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+// C-03: dispatch event on 401 only when a session existed (token present) — avoids
+// redirecting anonymous kiosk users who legitimately have no token
+const dispatch401 = () => {
+  if (localStorage.getItem('token')) {
+    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+  }
+};
 
 export const api = {
   async get<T = any>(endpoint: string): Promise<T> {

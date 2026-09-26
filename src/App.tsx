@@ -49,7 +49,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // M-07: cartelera is a full-screen public TV — render without nav
+  // Public terminals — full-screen, no nav (physical kiosk / TV screen)
   if (pathname === '/cartelera') {
     return (
       <Routes>
@@ -57,6 +57,16 @@ export const App: React.FC = () => {
           <PantallaCartelera onExitCartelera={() => navigate('/kiosko')} />
         } />
         <Route path="*" element={<Navigate to="/cartelera" replace />} />
+      </Routes>
+    );
+  }
+
+  if (pathname === '/kiosko' || pathname === '/') {
+    return (
+      <Routes>
+        <Route path="/"       element={<Navigate to="/kiosko" replace />} />
+        <Route path="/kiosko" element={<KioskoDispensador />} />
+        <Route path="*"       element={<Navigate to="/kiosko" replace />} />
       </Routes>
     );
   }

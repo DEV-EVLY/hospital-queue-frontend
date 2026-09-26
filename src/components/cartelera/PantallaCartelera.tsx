@@ -177,7 +177,7 @@ export const PantallaCartelera: React.FC<Props> = ({ onExitCartelera }) => {
               audioEnabled ? 'bg-sky-500/20 border-sky-400 text-sky-300' : 'bg-rose-500/20 border-rose-500 text-rose-400'
             }`}>
             {audioEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
-            <span>{audioEnabled ? 'Audio Chime ON' : 'Audio Silenciado'}</span>
+            <span>{audioEnabled ? 'Sonido Activado' : 'Audio Silenciado'}</span>
           </button>
           <div className="bg-slate-900 border border-sky-500/30 px-6 py-2 rounded-2xl flex items-center space-x-3 text-sky-300">
             <Clock className="w-6 h-6 text-sky-400" />
