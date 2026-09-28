@@ -1,112 +1,119 @@
 import React, { useState } from 'react';
-import { authApi } from '../../services/api';
+import { motion } from 'motion/react';
 import { Lock, User, AlertCircle, Activity } from 'lucide-react';
+import { Button, Input, Card } from '../ui';
+import { authApi } from '../../services/api';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setError('Ingresa usuario y contraseña');
+      setError('Ingresa usuario y contraseña.');
       return;
     }
-    setError(null);
     setLoading(true);
+    setError(null);
     try {
-      const res = await authApi.login({ username: username.trim(), password }) as any;
-      const token = res.token;
-      if (!token) throw new Error('Respuesta inválida del servidor');
-      localStorage.setItem('token', token);
+      const res = await authApi.login({ username: username.trim(), password }) as { token: string; userId?: string };
+      if (!res.token) throw new Error('Respuesta inválida del servidor');
+      localStorage.setItem('token', res.token);
       if (res.userId) localStorage.setItem('userId', res.userId);
       onLoginSuccess();
-    } catch (err: any) {
-      setError(err.message || 'Credenciales incorrectas');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Credenciales incorrectas. Verifique usuario y contraseña.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-surface-50 flex items-center justify-center px-4">
 
-        {/* Header */}
+      {/* Decorative blobs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
+        <div className="absolute -top-48 -right-48 w-[640px] h-[640px] rounded-full bg-primary-100 opacity-50" />
+        <div className="absolute -bottom-48 -left-48 w-[480px] h-[480px] rounded-full bg-health-100 opacity-40" />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10 w-full max-w-sm"
+      >
+        {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-sky-500/10 border border-sky-500/20 mb-4">
-            <Activity className="w-8 h-8 text-sky-400" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-700 shadow-card-md mb-4">
+            <Activity size={26} className="text-white" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-wider">HOSPITAL QUEUE SYSTEM</h1>
-          <p className="text-slate-400 text-sm mt-1">Acceso al sistema de gestión de colas</p>
+          <h1 className="text-xl font-bold text-surface-900 tracking-tight">Sistema Hospitalario</h1>
+          <p className="text-sm text-surface-500 mt-1">Ingrese sus credenciales de acceso</p>
         </div>
 
-        {/* Card */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        <Card padding="lg">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Input
+              label="Usuario"
+              type="text"
+              placeholder="nombre.usuario"
+              autoComplete="username"
+              autoFocus
+              fullWidth
+              icon={<User size={15} />}
+              value={username}
+              onChange={e => { setUsername(e.target.value); if (error) setError(null); }}
+              disabled={loading}
+            />
 
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Usuario
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  placeholder="usuario"
-                  autoFocus
-                  autoComplete="username"
-                  className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 transition-all"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Contraseña
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  className="w-full bg-slate-800 border border-slate-700 text-white placeholder-slate-500 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500/40 transition-all"
-                />
-              </div>
-            </div>
+            <Input
+              label="Contraseña"
+              type="password"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              fullWidth
+              icon={<Lock size={15} />}
+              value={password}
+              onChange={e => { setPassword(e.target.value); if (error) setError(null); }}
+              disabled={loading}
+            />
 
             {error && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span className="text-red-400 text-sm">{error}</span>
-              </div>
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="flex items-start gap-2.5 rounded-lg bg-red-50 border border-red-200 p-3"
+              >
+                <AlertCircle size={14} className="text-red-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-red-700 leading-snug">{error}</p>
+              </motion.div>
             )}
 
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full bg-sky-500 hover:bg-sky-400 disabled:bg-sky-500/40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all text-sm tracking-wide shadow-lg shadow-sky-500/20"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={loading}
+              className="mt-1"
             >
-              {loading ? 'Verificando...' : 'Ingresar al sistema'}
-            </button>
+              {loading ? 'Verificando...' : 'Ingresar'}
+            </Button>
           </form>
-        </div>
+        </Card>
 
-        <p className="text-center text-slate-600 text-xs mt-6">
+        <p className="text-center text-xs text-surface-400 mt-6">
           Acceso restringido — solo personal autorizado
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 };

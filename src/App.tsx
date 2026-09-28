@@ -1,22 +1,148 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { KioskoDispensador } from './components/dispensador/KioskoDispensador';
-import { ModuloOperador } from './components/operador/ModuloOperador';
-import { PantallaCartelera } from './components/cartelera/PantallaCartelera';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { LoginPage } from './components/auth/LoginPage';
-import { Monitor, Tv, UserCheck, ShieldCheck, Maximize2, Minimize2, LogOut } from 'lucide-react';
+import { Routes, Route, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'motion/react';
+import { Monitor, Tv, UserCheck, ShieldCheck, Maximize2, Minimize2, LogOut, Activity, Radio } from 'lucide-react';
+import { clsx } from 'clsx';
+import { getRole } from './services/auth';
+import { KioskoDispensador }  from './components/dispensador/KioskoDispensador';
+import { ModuloOperador }     from './components/operador/ModuloOperador';
+import { PantallaCartelera }  from './components/cartelera/PantallaCartelera';
+import { AdminDashboard }     from './components/admin/AdminDashboard';
+import { LoginPage }          from './components/auth/LoginPage';
+
+// ── Guards ────────────────────────────────────────────────────────────────────
+
+function RequireAuth() {
+  const location = useLocation();
+  const token = localStorage.getItem('token');
+  if (!token) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <Outlet />;
+}
+
+function RequireAdmin() {
+  const role = getRole();
+  if (role !== 'ADMIN') return <Navigate to="/operador" replace />;
+  return <Outlet />;
+}
+
+// ── Staff layout (nav bar) ────────────────────────────────────────────────────
+
+const STAFF_NAV = [
+  { path: '/operador',  icon: UserCheck,   label: 'Operador' },
+  { path: '/admin',     icon: ShieldCheck, label: 'Admin' },
+];
+
+function StaffLayout() {
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userId');
+    navigate('/login');
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setFullscreen(true);
+    } else {
+      document.exitFullscreen?.();
+      setFullscreen(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-surface-50">
+      <header className="bg-white border-b border-surface-200 shadow-card z-40 sticky top-0">
+        <div className="flex items-center justify-between px-5 h-14 gap-4">
+
+          {/* Brand */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center">
+              <Activity size={16} className="text-white" />
+            </div>
+            <span className="font-bold text-surface-900 text-sm hidden sm:block">Sistema Hospitalario</span>
+          </div>
+
+          {/* Nav tabs */}
+          <nav className="flex items-center gap-1 bg-surface-100 rounded-xl p-1">
+            {/* Public terminals — open in new tab so auth users can demo them */}
+            <button
+              onClick={() => window.open('/kiosko', '_blank')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none text-surface-500 hover:text-surface-700 hover:bg-surface-50"
+            >
+              <Monitor size={14} />
+              <span className="hidden md:block">Kiosko</span>
+            </button>
+            <button
+              onClick={() => window.open('/cartelera', '_blank')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none text-surface-500 hover:text-surface-700 hover:bg-surface-50"
+            >
+              <Tv size={14} />
+              <span className="hidden md:block">Cartelera</span>
+            </button>
+
+            {/* Staff routes */}
+            {STAFF_NAV.map(({ path, icon: Icon, label }) => (
+              <button
+                key={path}
+                onClick={() => navigate(path)}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none',
+                  isActive(path)
+                    ? 'bg-white text-surface-900 shadow-card'
+                    : 'text-surface-500 hover:text-surface-700 hover:bg-surface-50',
+                )}
+              >
+                <Icon size={14} />
+                <span className="hidden md:block">{label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Right actions */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-50 border border-surface-200">
+              <Radio size={12} className="text-health-500" />
+              <span className="text-xs font-medium text-health-700 hidden sm:block">En vivo</span>
+            </div>
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+              title="Cerrar sesión"
+            >
+              <LogOut size={14} />
+              <span className="hidden sm:block">Salir</span>
+            </motion.button>
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 rounded-lg text-surface-400 hover:text-surface-700 hover:bg-surface-100 transition-colors"
+              title={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            >
+              {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
 
 export const App: React.FC = () => {
-  const navigate   = useNavigate();
-  const location   = useLocation();
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Read token directly from storage — re-reads on every render after navigation
-  const token   = localStorage.getItem('token');
-  const pathname = location.pathname;
-
-  // C-03: listen for 401 events from api.ts and force logout
   useEffect(() => {
     const handle401 = () => {
       localStorage.removeItem('token');
@@ -27,120 +153,42 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('auth:unauthorized', handle401);
   }, [navigate, location]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('userId');
-    navigate('/kiosko');
-  };
-
   const handleLoginSuccess = () => {
-    // Redirect back to the view the user was trying to access, defaulting to /operador
-    const from = (location.state as any)?.from?.pathname;
-    navigate(from && from !== '/login' ? from : '/operador', { replace: true });
-  };
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
+    const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+    if (from && from !== '/login') {
+      navigate(from, { replace: true });
     } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
+      navigate(getRole() === 'ADMIN' ? '/admin' : '/operador', { replace: true });
     }
   };
 
-  // Public terminals — full-screen, no nav (physical kiosk / TV screen)
-  if (pathname === '/cartelera') {
-    return (
-      <Routes>
-        <Route path="/cartelera" element={
-          <PantallaCartelera onExitCartelera={() => navigate('/kiosko')} />
-        } />
-        <Route path="*" element={<Navigate to="/cartelera" replace />} />
-      </Routes>
-    );
-  }
-
-  if (pathname === '/kiosko' || pathname === '/') {
-    return (
-      <Routes>
-        <Route path="/"       element={<Navigate to="/kiosko" replace />} />
-        <Route path="/kiosko" element={<KioskoDispensador />} />
-        <Route path="*"       element={<Navigate to="/kiosko" replace />} />
-      </Routes>
-    );
-  }
-
-  const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
-
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950">
+    <Routes>
+      {/* Root redirect */}
+      <Route path="/" element={<Navigate to="/kiosko" replace />} />
 
-      <nav className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap justify-between items-center text-sm shadow-md z-40">
-        <div className="flex items-center space-x-3">
-          <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
-          <span className="font-black text-white tracking-wider text-base">HOSPITAL QUEUE SYSTEM</span>
-          <span className="bg-sky-500/20 text-sky-400 text-xs px-2.5 py-0.5 rounded-full font-mono border border-sky-500/30">
-            On-Premise 4 Cores / 32GB RAM
-          </span>
-        </div>
+      {/* Public fullscreen terminals — no nav wrapper */}
+      <Route path="/kiosko"    element={<KioskoDispensador />} />
+      <Route path="/cartelera" element={<PantallaCartelera onExitCartelera={() => {}} />} />
 
-        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 space-x-1">
-          {[
-            { path: '/kiosko',    icon: <Monitor className="w-4 h-4" />,    label: '1. Kiosko Dispensador' },
-            { path: '/operador',  icon: <UserCheck className="w-4 h-4" />,  label: '2. Consultorio / Operador' },
-            { path: '/cartelera', icon: <Tv className="w-4 h-4" />,         label: '3. Cartelera (Pantallas)' },
-            { path: '/admin',     icon: <ShieldCheck className="w-4 h-4" />,label: '4. Admin & BI' },
-          ].map(({ path, icon, label }) => (
-            <button key={path}
-              onClick={() => navigate(path)}
-              className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                isActive(path) ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}>
-              {icon}<span>{label}</span>
-            </button>
-          ))}
-        </div>
+      {/* Auth */}
+      <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
 
-        <div className="flex items-center space-x-2">
-          {/* B-05: only show logout in protected views where a session is relevant */}
-          {token && (pathname === '/operador' || pathname === '/admin') && (
-            <button onClick={handleLogout}
-              className="text-slate-400 hover:text-red-400 p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all text-xs flex items-center space-x-1"
-              title="Cerrar sesión">
-              <LogOut className="w-4 h-4" /><span>Salir</span>
-            </button>
-          )}
-          <button onClick={toggleFullscreen}
-            className="text-slate-400 hover:text-white p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-all text-xs flex items-center space-x-1"
-            title="Pantalla Completa">
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            <span>{isFullscreen ? 'Salir' : 'Full Screen'}</span>
-          </button>
-        </div>
-      </nav>
+      {/* Staff area — requires valid token */}
+      <Route element={<RequireAuth />}>
+        <Route element={<StaffLayout />}>
+          <Route path="/operador" element={<ModuloOperador />} />
 
-      <div className="flex-1">
-        <Routes>
-          <Route path="/"          element={<Navigate to="/kiosko" replace />} />
-          <Route path="/kiosko"    element={<KioskoDispensador />} />
-          <Route path="/cartelera" element={<PantallaCartelera onExitCartelera={() => navigate('/kiosko')} />} />
-          <Route path="/operador"  element={
-            token
-              ? <ModuloOperador />
-              : <Navigate to="/login" state={{ from: location }} replace />
-          } />
-          <Route path="/admin"     element={
-            token
-              ? <AdminDashboard />
-              : <Navigate to="/login" state={{ from: location }} replace />
-          } />
-          <Route path="/login"     element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="*"          element={<Navigate to="/kiosko" replace />} />
-        </Routes>
-      </div>
+          {/* Admin area — additionally requires ADMIN role */}
+          <Route element={<RequireAdmin />}>
+            <Route path="/admin" element={<AdminDashboard />} />
+          </Route>
+        </Route>
+      </Route>
 
-    </div>
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/kiosko" replace />} />
+    </Routes>
   );
 };
 

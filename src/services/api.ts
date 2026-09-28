@@ -135,17 +135,17 @@ export const ticketsApi = {
   startAttention: (id: string | number) =>
     api.post(`/tickets/${id}/start-attention`),
   completeAttention: (id: string | number, notes?: string) =>
-    api.post(`/tickets/${id}/complete-attention`, notes ? { notes } : undefined),
-  // A-02: mark patient as absent / no-show
+    api.post(`/tickets/${id}/complete-attention`, { finalStatus: 'ATTENDED', notes: notes ?? null }),
   markAbsent: (id: string | number) =>
-    api.post(`/tickets/${id}/no-show`),
-  // A-03: derive ticket to another service
+    api.post(`/tickets/${id}/complete-attention`, { finalStatus: 'NOT_ATTENDED', notes: null }),
   deriveTicket: (id: string | number, targetServiceId: string) =>
     api.post(`/tickets/${id}/derive`, { targetServiceId }),
   lastCalled: (limit = 6) =>
     api.get(`/tickets/last-called?limit=${limit}`),
   activeQueue: (serviceId: string | number) =>
-    api.get(`/tickets/active-queue?serviceId=${serviceId}`)
+    api.get(`/tickets/active-queue?serviceId=${serviceId}`),
+  currentRoom: (consultingRoomId: string) =>
+    api.get(`/tickets/current-room?consultingRoomId=${consultingRoomId}`)
 };
 
 export const appointmentsApi = {

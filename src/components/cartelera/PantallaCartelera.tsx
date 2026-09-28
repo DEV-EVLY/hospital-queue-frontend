@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ticketsApi, medicalServicesApi } from '../../services/api';
+import { motion, AnimatePresence } from 'motion/react';
+import { ticketsApi, medicalServicesApi, consultingRoomsApi } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { soundService } from '../../services/audio';
-import { Volume2, VolumeX, Clock, Activity, MapPin, WifiOff, X } from 'lucide-react';
+import { Activity, Volume2, VolumeX, Wifi, WifiOff, MapPin, X } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface CalledTicket {
   id: string;
@@ -13,25 +18,39 @@ interface CalledTicket {
   calledAt: string;
 }
 
-// B-06: ticker message from env var with fallback
-const TICKER_MSG = (import.meta as any).env?.VITE_TICKER_MSG
-  ?? 'Bienvenido al Hospital Nacional. Por favor, conserve su ticket y permanezca atento a las pantallas. La atención preferencial se otorga según la Ley 28683.';
+export interface PantallaCarteleraProps {
+  onExitCartelera: () => void;
+}
 
-const mapEvent = (payload: any, serviceMap: Map<string, string>): CalledTicket => ({
-  id:          payload.id,
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const TICKER_MSG =
+  (import.meta as any).env?.VITE_TICKER_MSG ??
+  'Hospital Nacional · Sistema de Gestión de Colas · Atiéndase con su número de turno · Conserve su ticket y permanezca atento a la pantalla';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const mapEvent = (
+  payload: any,
+  serviceMap: Map<string, string>,
+  roomMap: Map<string, string>,
+): CalledTicket => ({
+  id:          payload.ticketId ?? payload.id ?? String(Date.now()),
   ticketCode:  payload.ticketCode  ?? payload.ticket_codigo  ?? '—',
-  serviceName: payload.serviceName ?? payload.servicio_nombre
-               ?? serviceMap.get(payload.medicalServiceId)   ?? payload.medicalServiceId ?? '—',
-  roomName:    payload.roomName    ?? payload.modulo_nombre   ?? payload.consultingRoomId ?? '—',
+  serviceName: payload.serviceName ?? payload.medicalServiceName ?? payload.medicalServiceCode
+               ?? payload.servicio_nombre
+               ?? serviceMap.get(payload.medicalServiceId) ?? payload.medicalServiceId ?? '—',
+  roomName:    payload.roomName ?? payload.consultingRoomName ?? payload.consultingRoomCode
+               ?? payload.modulo_nombre
+               ?? roomMap.get(payload.consultingRoomId) ?? payload.consultingRoomId ?? '—',
   location:    payload.location    ?? payload.ubicacion,
   calledAt:    payload.calledAt    ?? payload.timestamp_llamado ?? new Date().toISOString(),
 });
 
-interface Props {
-  onExitCartelera?: () => void;
-}
-
-// A-01: read ?zone= from URL — matches ticket.roomName or ticket.serviceName (case-insensitive partial)
 const getZoneFilter = (): string | null => {
   try {
     return new URLSearchParams(window.location.search).get('zone');
@@ -51,232 +70,366 @@ const matchesZone = (ticket: CalledTicket, zone: string | null): boolean => {
   );
 };
 
-export const PantallaCartelera: React.FC<Props> = ({ onExitCartelera }) => {
+const getSpanishDate = (): string => {
+  return new Date().toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCartelera }) => {
   const [current, setCurrent]         = useState<CalledTicket | null>(null);
   const [history, setHistory]         = useState<CalledTicket[]>([]);
-  const [audioEnabled, setAudio]      = useState(true);
-  const [horaActual, setHora]         = useState('');
-  const [isBlinking, setBlinking]     = useState(false);
-  // C-07: track SSE connection state
+  const [audioEnabled, setAudio]      = useState(false);
+  const [timeStr, setTimeStr]         = useState('');
+  const [dateStr, setDateStr]         = useState('');
+  const [flash, setFlash]             = useState(false);
   const [sseConnected, setSseConnected] = useState(true);
-  const serviceMapRef                 = useRef(new Map<string, string>());
-  // A-01: zone filter from URL param — stable for the lifetime of the page
-  const zoneFilter                    = useRef(getZoneFilter()).current;
+  // Key increments each time a new ticket arrives so AnimatePresence remounts
+  const [ticketKey, setTicketKey]     = useState(0);
 
+  const serviceMapRef = useRef(new Map<string, string>());
+  const roomMapRef    = useRef(new Map<string, string>());
+  const zoneFilter    = useRef(getZoneFilter()).current;
+
+  // Clock
   useEffect(() => {
     const tick = () => {
-      setHora(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setTimeStr(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setDateStr(getSpanishDate());
     };
     tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, []);
 
+  // Initial data load
   useEffect(() => {
-    const loadInitial = async () => {
+    const load = async () => {
       try {
         const svcs = await medicalServicesApi.list() as any[];
-        svcs.forEach(s => serviceMapRef.current.set(s.id, s.name));
+        svcs.forEach(s => serviceMapRef.current.set(s.id, s.name ?? s.serviceName ?? s.code));
+      } catch { /* ok */ }
+
+      try {
+        const rooms = await consultingRoomsApi.list() as any[];
+        rooms.forEach(r => roomMapRef.current.set(r.id, r.name ?? r.roomName ?? r.code));
       } catch { /* ok */ }
 
       try {
         const data = await ticketsApi.lastCalled(6) as any[];
         if (Array.isArray(data) && data.length > 0) {
-          // A-01: filter by zone if set
-          const mapped = data.map(t => mapEvent(t, serviceMapRef.current))
+          const mapped = data
+            .map(t => mapEvent(t, serviceMapRef.current, roomMapRef.current))
             .filter(t => matchesZone(t, zoneFilter));
           if (mapped.length > 0) {
             setCurrent(mapped[0]);
-            setHistory(mapped.slice(1));
+            setHistory(mapped.slice(1, 6));
           }
         }
       } catch { /* ok */ }
     };
-    loadInitial();
+    load();
   }, []);
 
+  // SSE
   useEffect(() => {
     const es = getSocket('pantalla');
 
-    const handler = (payload: any) => {
-      const ticket = mapEvent(payload, serviceMapRef.current);
-      // A-01: ignore events that don't match the zone filter
+    const handleTicket = (payload: any) => {
+      const ticket = mapEvent(payload, serviceMapRef.current, roomMapRef.current);
       if (!matchesZone(ticket, zoneFilter)) return;
+
       setCurrent(ticket);
-      setBlinking(true);
-      setTimeout(() => setBlinking(false), 6000);
+      setTicketKey(k => k + 1);
+      setFlash(true);
+      setTimeout(() => setFlash(false), 1800);
+
+      setHistory(prev => [ticket, ...prev.filter(x => x.id !== ticket.id)].slice(0, 5));
+
       if (audioEnabled) {
-        const announcement = payload.audioAnnouncement ?? payload.audio_anuncio
-          ?? `Turno ${ticket.ticketCode}, diríjase a ${ticket.roomName}`;
+        const announcement =
+          payload.audioAnnouncement ??
+          `Turno ${ticket.ticketCode}, diríjase a ${ticket.roomName}`;
         soundService.speakAnnouncement(announcement);
       }
-      setHistory(prev => [ticket, ...prev.filter(x => x.id !== ticket.id)].slice(0, 5));
     };
 
-    // C-07: track connection for visual indicator
-    const onConnectionStatus = (data: { connected: boolean }) => {
-      setSseConnected(data.connected);
+    const handleCompleted = (payload: any) => {
+      const completedId = payload?.ticketId ?? payload?.id;
+      if (!completedId) return;
+      setCurrent(prev => {
+        if (prev?.id === completedId) return null;
+        return prev;
+      });
+      setHistory(prev => prev.filter(x => x.id !== completedId));
     };
 
-    es.on('ticket_called', handler);
-    es.on('connection_status', onConnectionStatus);
+    const handleConnection = (data: unknown) => {
+      setSseConnected((data as { connected: boolean }).connected);
+    };
+
+    es.on('TICKET_CALLED',        handleTicket);
+    es.on('TICKET_RECALLED',      handleTicket);
+    es.on('ATTENTION_COMPLETED',  handleCompleted);
+    es.on('connection_status',    handleConnection);
 
     return () => {
-      es.off('ticket_called', handler);
-      es.off('connection_status', onConnectionStatus);
+      es.off('TICKET_CALLED',        handleTicket);
+      es.off('TICKET_RECALLED',      handleTicket);
+      es.off('ATTENTION_COMPLETED',  handleCompleted);
+      es.off('connection_status',    handleConnection);
     };
-  }, [audioEnabled]);
+  }, [audioEnabled, zoneFilter]);
 
   const toggleAudio = () => {
     setAudio(prev => {
-      if (!prev) soundService.playHospitalChime();
-      return !prev;
+      const next = !prev;
+      if (next) soundService.playHospitalChime();
+      return next;
     });
   };
 
-  return (
-    <div className="h-screen w-screen bg-slate-950 text-white flex flex-col justify-between overflow-hidden select-none font-sans">
+  // Capitalise first letter of Spanish date
+  const dateCap = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
 
-      {/* C-07: disconnection overlay banner */}
+  return (
+    <div className="h-screen w-screen bg-[#070D1A] text-white flex flex-col overflow-hidden select-none font-sans">
+
+      {/* Disconnection banner */}
       {!sseConnected && (
-        <div className="absolute top-0 inset-x-0 z-50 flex items-center justify-center space-x-3 bg-amber-500/95 text-amber-950 text-sm font-black py-2 px-4">
-          <WifiOff className="w-4 h-4" />
+        <div className="absolute top-0 inset-x-0 z-50 flex items-center justify-center gap-3 bg-amber-500/95 text-amber-950 text-sm font-black py-2 px-4">
+          <WifiOff className="w-4 h-4 shrink-0" />
           <span>Sistema sin conexión en tiempo real — reconectando...</span>
         </div>
       )}
 
-      <header className="bg-slate-900/90 border-b border-sky-500/30 px-10 py-5 flex justify-between items-center shadow-2xl">
-        <div className="flex items-center space-x-6">
-          <div className="bg-gradient-to-tr from-sky-600 to-cyan-400 p-4 rounded-2xl shadow-lg shadow-cyan-500/30 animate-pulse">
-            <Activity className="w-10 h-10 text-white" />
+      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      <header className="bg-[#0A1628]/90 border-b border-sky-500/20 px-8 py-4 flex items-center justify-between shrink-0 shadow-2xl">
+
+        {/* Left: logo + name */}
+        <div className="flex items-center gap-5">
+          <div className="bg-gradient-to-br from-sky-600 to-cyan-400 p-3 rounded-2xl shadow-lg shadow-cyan-500/30">
+            <Activity className="w-9 h-9 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-black tracking-widest text-sky-100">HOSPITAL NACIONAL DOCENTE</h1>
-            <p className="text-sm font-bold text-sky-400 uppercase tracking-widest">
-              SALA DE ESPERA GENERAL — LLAMADO A CONSULTORIOS
-              {/* A-01: show zone filter badge if active */}
+            <h1 className="text-2xl font-black tracking-widest text-sky-100 uppercase">
+              Hospital Nacional
+            </h1>
+            <p className="text-xs font-bold text-sky-500 uppercase tracking-widest flex items-center gap-2">
+              Sala de Espera — Llamado a Consultorios
               {zoneFilter && (
-                <span className="ml-3 bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-lg text-xs font-mono lowercase">
+                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md font-mono lowercase">
                   zona: {zoneFilter}
                 </span>
               )}
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
-          {/* M-07 (via App.tsx): exit button to go back to internal nav */}
-          {onExitCartelera && (
-            <button onClick={onExitCartelera}
-              className="p-3 rounded-2xl border border-slate-700 bg-slate-800/60 text-slate-400 hover:text-white transition-all"
-              title="Salir de Cartelera">
-              <X className="w-5 h-5" />
-            </button>
-          )}
-          <button onClick={toggleAudio}
-            className={`p-3 rounded-2xl border transition-all flex items-center space-x-2 text-sm font-bold ${
-              audioEnabled ? 'bg-sky-500/20 border-sky-400 text-sky-300' : 'bg-rose-500/20 border-rose-500 text-rose-400'
-            }`}>
-            {audioEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
-            <span>{audioEnabled ? 'Sonido Activado' : 'Audio Silenciado'}</span>
-          </button>
-          <div className="bg-slate-900 border border-sky-500/30 px-6 py-2 rounded-2xl flex items-center space-x-3 text-sky-300">
-            <Clock className="w-6 h-6 text-sky-400" />
-            <span className="text-3xl font-mono font-black tracking-wider">{horaActual}</span>
+
+        {/* Center: date + time */}
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-sm text-sky-300 font-semibold tracking-wide">{dateCap}</span>
+          <span className="text-4xl font-mono font-black tracking-widest text-white tabular-nums">
+            {timeStr}
+          </span>
+        </div>
+
+        {/* Right: SSE indicator + audio toggle + exit */}
+        <div className="flex items-center gap-3">
+          {/* SSE status */}
+          <div className="flex items-center gap-2 bg-[#0E1C34] border border-slate-700/60 rounded-xl px-4 py-2">
+            {sseConnected ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+                <Wifi className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-black text-emerald-400 tracking-widest">EN VIVO</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <WifiOff className="w-4 h-4 text-rose-400" />
+                <span className="text-xs font-black text-rose-400 tracking-widest">OFFLINE</span>
+              </>
+            )}
           </div>
+
+          {/* Audio toggle */}
+          <button
+            onClick={toggleAudio}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all ${
+              audioEnabled
+                ? 'bg-sky-500/20 border-sky-400/60 text-sky-300 hover:bg-sky-500/30'
+                : 'bg-slate-800/60 border-slate-600 text-slate-400 hover:border-slate-500'
+            }`}
+            title={audioEnabled ? 'Silenciar audio' : 'Activar audio'}
+          >
+            {audioEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            <span>{audioEnabled ? 'Sonido ON' : 'Sonido OFF'}</span>
+          </button>
+
+          {/* Exit */}
+          <button
+            onClick={onExitCartelera}
+            className="p-2.5 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-400 hover:text-white hover:border-slate-500 transition-all"
+            title="Salir de Cartelera"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
-      <main className="flex-1 grid grid-cols-12 gap-8 p-8 overflow-hidden">
+      {/* ── MAIN ───────────────────────────────────────────────────────── */}
+      <main className="flex-1 flex overflow-hidden">
 
-        {/* Panel principal (8 cols) */}
-        <div className="col-span-8 flex flex-col justify-center items-center">
-          {current ? (
-            <div className={`w-full h-full rounded-3xl border-4 p-10 flex flex-col justify-between transition-all duration-500 shadow-2xl ${
-              isBlinking
-                ? 'bg-gradient-to-br from-sky-950 via-blue-900 to-slate-900 border-cyan-400 shadow-cyan-500/50 scale-[1.01]'
-                : 'bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border-slate-700/80 shadow-black'
-            }`}>
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-mono uppercase tracking-widest bg-sky-500/20 text-sky-300 px-6 py-2 rounded-full border border-sky-400/30">
-                  {current.serviceName}
-                </span>
-                <span className="text-xs font-mono text-slate-400">
-                  Llamado: {current.calledAt?.substring(11, 19) || horaActual}
-                </span>
-              </div>
+        {/* LEFT — Current ticket (70%) */}
+        <div className="w-[70%] flex flex-col items-center justify-center p-8 border-r border-slate-800/60">
+          <AnimatePresence mode="wait">
+            {current ? (
+              <motion.div
+                key={ticketKey}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className="w-full max-w-2xl flex flex-col gap-6"
+              >
+                {/* Flash overlay on new ticket */}
+                <motion.div
+                  animate={flash ? { backgroundColor: ['#1e40af40', '#07297040', '#00000000'] } : {}}
+                  transition={{ duration: 1.8, ease: 'easeOut' }}
+                  className="rounded-3xl border border-sky-500/20 bg-[#0A1628]/80 p-10 flex flex-col items-center gap-6 shadow-2xl"
+                >
+                  {/* Service badge */}
+                  <span className="text-sm font-mono uppercase tracking-widest bg-sky-500/20 text-sky-300 px-6 py-2 rounded-full border border-sky-400/30">
+                    {current.serviceName}
+                  </span>
 
-              <div className="text-center my-auto">
-                <span className="text-lg font-bold text-slate-400 uppercase tracking-widest block mb-2">TURNO</span>
-                <div className={`text-[120px] font-black font-mono tracking-wider transition-all leading-none ${
-                  isBlinking
-                    ? 'text-cyan-300 scale-105 drop-shadow-[0_10px_25px_rgba(6,182,212,0.6)]'
-                    : 'text-sky-400 drop-shadow-[0_10px_20px_rgba(14,165,233,0.3)]'
-                }`}>
-                  {current.ticketCode}
-                </div>
-              </div>
-
-              <div className="bg-slate-950/80 border-2 border-sky-500/40 rounded-3xl p-6 flex items-center justify-between shadow-inner">
-                <div className="flex items-center space-x-4">
-                  <div className="p-4 bg-sky-500 text-slate-950 rounded-2xl">
-                    <MapPin className="w-8 h-8" />
+                  {/* TICKET CODE — hero element */}
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-base font-bold text-slate-400 uppercase tracking-[0.3em]">
+                      TURNO
+                    </span>
+                    <motion.div
+                      animate={
+                        flash
+                          ? { scale: [0.85, 1.08, 1.0], color: ['#38bdf8', '#e0f2fe', '#38bdf8'] }
+                          : { scale: 1, color: '#38bdf8' }
+                      }
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                      className="font-mono font-black leading-none drop-shadow-[0_0_30px_rgba(56,189,248,0.4)]"
+                      style={{ fontSize: '6rem' }}
+                    >
+                      {current.ticketCode}
+                    </motion.div>
                   </div>
-                  <div>
-                    <span className="text-xs font-bold text-sky-400 uppercase tracking-widest">DIRÍJASE AL</span>
-                    <div className="text-3xl font-black text-white">{current.roomName}</div>
+
+                  {/* "Pasar al Consultorio" strip */}
+                  <div className="w-full bg-sky-950/50 border-2 border-sky-500/40 rounded-2xl p-5 flex items-center gap-5">
+                    <div className="p-3 bg-sky-500 text-slate-950 rounded-xl shrink-0">
+                      <MapPin className="w-7 h-7" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-0.5">
+                        PASAR AL CONSULTORIO
+                      </p>
+                      <p
+                        className="font-black text-primary-400 text-sky-300 leading-none"
+                        style={{ fontSize: '4rem' }}
+                      >
+                        {current.roomName}
+                      </p>
+                    </div>
+                    {current.location && (
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-500">Ubicación</p>
+                        <p className="text-lg font-bold text-sky-200">{current.location}</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400">Ubicación</span>
-                  <div className="text-lg font-bold text-sky-200">{current.location || 'Pabellón Central'}</div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full h-full rounded-3xl border-2 border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-600">
-              <Activity className="w-20 h-20 mb-4 opacity-40 animate-pulse" />
-              <h2 className="text-2xl font-bold">Esperando próximos llamados...</h2>
-            </div>
-          )}
+
+                  {/* Called-at timestamp */}
+                  <p className="text-sm font-mono text-slate-500">
+                    Llamado: {current.calledAt?.substring(11, 19) || timeStr}
+                  </p>
+                </motion.div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center gap-4 text-slate-600"
+              >
+                <Activity className="w-24 h-24 opacity-30 animate-pulse" />
+                <p className="text-3xl font-bold">Esperando próximos llamados...</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Historial (4 cols) */}
-        <div className="col-span-4 bg-slate-900/60 rounded-3xl border border-slate-800 p-6 flex flex-col justify-between shadow-xl">
-          <div>
-            <h3 className="text-lg font-black text-slate-300 uppercase tracking-widest pb-4 border-b border-slate-800 mb-4 flex items-center justify-between">
-              <span>ÚLTIMOS LLAMADOS</span>
-              <span className="text-xs text-sky-400 font-mono">EN ATENCIÓN</span>
-            </h3>
-            <div className="space-y-3">
-              {history.map((h, i) => (
-                <div key={h.id || i}
-                  className="bg-slate-950/70 border border-slate-800/80 p-4 rounded-2xl flex justify-between items-center hover:border-slate-700 transition-all">
-                  <div>
-                    <div className="font-mono font-black text-2xl text-sky-300 tracking-wider">{h.ticketCode}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">{h.serviceName}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-bold text-white">{h.roomName}</div>
-                    <div className="text-[10px] text-slate-500 font-mono">{h.calledAt?.substring(11, 16)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* RIGHT — History panel (30%) */}
+        <div className="w-[30%] flex flex-col p-6 gap-4 overflow-hidden bg-[#080F1F]/60">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h2 className="text-base font-black uppercase tracking-widest text-slate-300">
+              Turnos Anteriores
+            </h2>
+            <span className="text-xs font-mono text-sky-500 font-bold">EN ATENCIÓN</span>
           </div>
-          <div className="text-center p-4 bg-sky-950/40 rounded-2xl border border-sky-800/30 text-xs text-sky-300">
-            Al escuchar el timbre y su código en pantalla, acérquese con su DNI en mano.
+
+          <ul className="flex flex-col gap-3 overflow-hidden">
+            <AnimatePresence initial={false}>
+              {history.map((h, i) => (
+                <motion.li
+                  key={h.id}
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -30 }}
+                  transition={{ duration: 0.3, delay: i * 0.05, ease: 'easeOut' }}
+                  className="bg-[#0A1628]/70 border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono font-black text-2xl text-sky-300 tracking-wider leading-none">
+                      {h.ticketCode}
+                    </span>
+                    <span className="text-xs text-slate-500">{h.serviceName}</span>
+                  </div>
+                  <div className="text-right flex flex-col gap-0.5">
+                    <span className="text-base font-bold text-white">{h.roomName}</span>
+                    <span className="text-[10px] font-mono text-slate-600">{h.calledAt?.substring(11, 16)}</span>
+                  </div>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+
+          {/* Bottom reminder */}
+          <div className="mt-auto p-4 rounded-2xl bg-sky-950/40 border border-sky-800/30 text-xs text-sky-300 text-center leading-relaxed">
+            Al escuchar su número, acérquese con su DNI en mano al consultorio indicado.
           </div>
         </div>
       </main>
 
-      <footer className="bg-sky-600 text-white py-3 px-6 overflow-hidden flex items-center shadow-2xl">
-        <span className="bg-sky-800 font-black text-xs uppercase tracking-widest px-3 py-1 rounded-lg mr-4 whitespace-nowrap shadow">
-          COMUNICADO
+      {/* ── FOOTER TICKER ──────────────────────────────────────────────── */}
+      <footer className="bg-sky-700 text-white py-3 px-4 overflow-hidden flex items-center gap-4 shrink-0 shadow-2xl">
+        <span className="bg-sky-900 font-black text-xs uppercase tracking-widest px-3 py-1 rounded-lg whitespace-nowrap shadow">
+          AVISO
         </span>
-        <div className="whitespace-nowrap overflow-hidden flex-1">
-          <p className="inline-block text-base font-bold animate-marquee">{TICKER_MSG}</p>
+        <div className="overflow-hidden flex-1 relative">
+          <p className="inline-block text-base font-bold whitespace-nowrap animate-ticker">
+            {TICKER_MSG}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{TICKER_MSG}
+          </p>
         </div>
       </footer>
     </div>
   );
 };
+
+export default PantallaCartelera;

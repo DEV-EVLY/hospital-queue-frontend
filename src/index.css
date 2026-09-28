@@ -1,37 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@keyframes marquee {
-  0% { transform: translateX(100%); }
+/* ─── Base resets ───────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+  }
+
+  /* Smooth scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+}
+
+/* ─── Component layer ───────────────────────────────────────────────────────── */
+@layer components {
+  /* Glass card — used for overlay panels */
+  .glass-card {
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    background-color: rgb(255 255 255 / 0.75);
+    border: 1px solid rgb(255 255 255 / 0.5);
+  }
+
+  /* Ticket code — monospace bold display */
+  .ticket-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Status dot — animated pulse for live indicators */
+  .status-dot-live {
+    position: relative;
+  }
+  .status-dot-live::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    background: inherit;
+    opacity: 0.4;
+    animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  /* Kiosko numeric key */
+  .kiosko-key {
+    @apply flex items-center justify-center rounded-xl2 font-bold text-2xl
+           transition-all duration-150 select-none cursor-pointer
+           bg-white border-2 border-surface-200
+           hover:border-primary-400 hover:bg-primary-50 hover:shadow-card-md
+           active:scale-95 active:bg-primary-100;
+    min-height: 72px;
+  }
+  .kiosko-key-delete {
+    @apply kiosko-key bg-red-50 border-red-200 hover:border-red-400 hover:bg-red-100;
+  }
+  .kiosko-key-confirm {
+    @apply kiosko-key bg-health-600 border-health-600 text-white
+           hover:bg-health-700 hover:border-health-700 hover:shadow-card-md;
+  }
+
+  /* Cartelera dark surface */
+  .cartelera-surface {
+    background-color: #070D1A;
+    color: #F1F5F9;
+  }
+}
+
+/* ─── Custom animations ─────────────────────────────────────────────────────── */
+@keyframes ping {
+  75%, 100% { transform: scale(1.8); opacity: 0; }
+}
+
+@keyframes ticker {
+  0%   { transform: translateX(100vw); }
   100% { transform: translateX(-100%); }
 }
 
-.animate-marquee {
+.animate-ticker {
   display: inline-block;
   white-space: nowrap;
-  animation: marquee 25s linear infinite;
+  animation: ticker 35s linear infinite;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes flashHighlight {
+  0%, 100% { background-color: transparent; }
+  30%, 70% { background-color: rgb(59 130 246 / 0.18); }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.25s ease-out forwards;
+.animate-flash-highlight {
+  animation: flashHighlight 1s ease-in-out 4;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-/* M-01: Print styles for the kiosko ticket — optimized for 80mm thermal printers */
+.animate-slide-in-right {
+  animation: slideInRight 0.35s ease-out forwards;
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-in-up {
+  animation: slideInUp 0.35s ease-out forwards;
+}
+
+/* ─── Print styles (80mm thermal ticket) ───────────────────────────────────── */
 @media print {
   body * { visibility: hidden; }
-  #ticket-print-area, #ticket-print-area * { visibility: visible; }
+  #ticket-print-area,
+  #ticket-print-area * { visibility: visible; }
   #ticket-print-area {
     position: absolute;
     left: 0;
@@ -42,7 +147,6 @@ body {
     font-family: 'Courier New', monospace;
     padding: 4mm;
   }
-  /* Force black text and white backgrounds — thermal printers don't do color */
   #ticket-print-area * {
     background: white !important;
     color: black !important;
