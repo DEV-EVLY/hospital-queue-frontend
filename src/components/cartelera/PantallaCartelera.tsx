@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ticketsApi, medicalServicesApi, consultingRoomsApi } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { soundService } from '../../services/audio';
-import { Activity, Volume2, VolumeX, Wifi, WifiOff, MapPin, X } from 'lucide-react';
+import { Activity, Volume2, VolumeX, Wifi, WifiOff, MapPin, X, Clock } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,6 +16,15 @@ interface CalledTicket {
   roomName: string;
   location?: string;
   calledAt: string;
+}
+
+interface WaitingTicket {
+  id: string;
+  ticketCode: string;
+  serviceName: string;
+  priorityLevel: string;
+  priorityPoints: number;
+  issuedAt: string;
 }
 
 export interface PantallaCarteleraProps {
@@ -79,6 +88,21 @@ const getSpanishDate = (): string => {
   });
 };
 
+const mapWaiting = (t: any, serviceMap: Map<string, string>): WaitingTicket => ({
+  id:             t.id ?? t.ticketId ?? String(Date.now()),
+  ticketCode:     t.ticketCode ?? '—',
+  serviceName:    t.serviceName ?? serviceMap.get(t.medicalServiceId) ?? t.medicalServiceId ?? '—',
+  priorityLevel:  t.priorityLevel ?? 'NORMAL',
+  priorityPoints: t.priorityPoints ?? 0,
+  issuedAt:       t.issuedAt ?? t.timestamp ?? new Date().toISOString(),
+});
+
+const PRIORITY_COLOR: Record<string, string> = {
+  URGENT:       'text-rose-400   border-rose-500/40   bg-rose-950/40',
+  PREFERENTIAL: 'text-amber-400  border-amber-500/40  bg-amber-950/40',
+  NORMAL:       'text-slate-400  border-slate-700/40  bg-slate-900/40',
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -86,6 +110,7 @@ const getSpanishDate = (): string => {
 export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCartelera }) => {
   const [current, setCurrent]         = useState<CalledTicket | null>(null);
   const [history, setHistory]         = useState<CalledTicket[]>([]);
+  const [waitingQueue, setWaitingQueue] = useState<WaitingTicket[]>([]);
   const [audioEnabled, setAudio]      = useState(false);
   const [timeStr, setTimeStr]         = useState('');
   const [dateStr, setDateStr]         = useState('');
@@ -134,6 +159,13 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
           }
         }
       } catch { /* ok */ }
+
+      try {
+        const waiting = await ticketsApi.waitingQueue(20) as any[];
+        if (Array.isArray(waiting)) {
+          setWaitingQueue(waiting.map(t => mapWaiting(t, serviceMapRef.current)));
+        }
+      } catch { /* ok */ }
     };
     load();
   }, []);
@@ -169,19 +201,40 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
         return prev;
       });
       setHistory(prev => prev.filter(x => x.id !== completedId));
+      setWaitingQueue(prev => prev.filter(x => x.id !== completedId));
+    };
+
+    const handleDispensed = (payload: any) => {
+      const wt = mapWaiting(payload, serviceMapRef.current);
+      setWaitingQueue(prev => {
+        if (prev.some(x => x.id === wt.id)) return prev;
+        const next = [wt, ...prev];
+        next.sort((a, b) => b.priorityPoints - a.priorityPoints || a.issuedAt.localeCompare(b.issuedAt));
+        return next.slice(0, 20);
+      });
+    };
+
+    const handleCalledFromQueue = (payload: any) => {
+      const calledId = payload?.ticketId ?? payload?.id;
+      if (!calledId) return;
+      setWaitingQueue(prev => prev.filter(x => x.id !== calledId));
     };
 
     const handleConnection = (data: unknown) => {
       setSseConnected((data as { connected: boolean }).connected);
     };
 
+    es.on('TICKET_DISPENSED',    handleDispensed);
     es.on('TICKET_CALLED',        handleTicket);
+    es.on('TICKET_CALLED',        handleCalledFromQueue);
     es.on('TICKET_RECALLED',      handleTicket);
     es.on('ATTENTION_COMPLETED',  handleCompleted);
     es.on('connection_status',    handleConnection);
 
     return () => {
+      es.off('TICKET_DISPENSED',   handleDispensed);
       es.off('TICKET_CALLED',        handleTicket);
+      es.off('TICKET_CALLED',        handleCalledFromQueue);
       es.off('TICKET_RECALLED',      handleTicket);
       es.off('ATTENTION_COMPLETED',  handleCompleted);
       es.off('connection_status',    handleConnection);
@@ -375,43 +428,77 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
           </AnimatePresence>
         </div>
 
-        {/* RIGHT — History panel (30%) */}
+        {/* RIGHT — Waiting queue panel (30%) */}
         <div className="w-[30%] flex flex-col p-6 gap-4 overflow-hidden bg-[#080F1F]/60">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <h2 className="text-base font-black uppercase tracking-widest text-slate-300">
-              Turnos Anteriores
-            </h2>
-            <span className="text-xs font-mono text-sky-500 font-bold">EN ATENCIÓN</span>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-sky-400" />
+              <h2 className="text-base font-black uppercase tracking-widest text-slate-300">
+                En Espera
+              </h2>
+            </div>
+            <span className="text-xs font-mono text-sky-500 font-bold bg-sky-950/50 border border-sky-800/40 rounded-lg px-2 py-0.5">
+              {waitingQueue.length} turno{waitingQueue.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
-          <ul className="flex flex-col gap-3 overflow-hidden">
+          <ul className="flex flex-col gap-2 overflow-y-auto flex-1 pr-1 scrollbar-hide">
             <AnimatePresence initial={false}>
-              {history.map((h, i) => (
+              {waitingQueue.length === 0 ? (
                 <motion.li
-                  key={h.id}
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -30 }}
-                  transition={{ duration: 0.3, delay: i * 0.05, ease: 'easeOut' }}
-                  className="bg-[#0A1628]/70 border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between"
+                  key="empty-queue"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col items-center justify-center gap-2 py-10 text-slate-600"
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-mono font-black text-2xl text-sky-300 tracking-wider leading-none">
-                      {h.ticketCode}
-                    </span>
-                    <span className="text-xs text-slate-500">{h.serviceName}</span>
-                  </div>
-                  <div className="text-right flex flex-col gap-0.5">
-                    <span className="text-base font-bold text-white">{h.roomName}</span>
-                    <span className="text-[10px] font-mono text-slate-600">{h.calledAt?.substring(11, 16)}</span>
-                  </div>
+                  <Clock className="w-10 h-10 opacity-30" />
+                  <span className="text-sm font-semibold">Sin turnos en espera</span>
                 </motion.li>
-              ))}
+              ) : (
+                waitingQueue.map((wt, i) => {
+                  const colorCls = PRIORITY_COLOR[wt.priorityLevel] ?? PRIORITY_COLOR['NORMAL'];
+                  return (
+                    <motion.li
+                      key={wt.id}
+                      initial={{ opacity: 0, x: 30 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -30, height: 0, marginBottom: 0 }}
+                      transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.3), ease: 'easeOut' }}
+                      className={`border rounded-xl p-3 flex items-center justify-between ${colorCls}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">
+                          {i + 1}
+                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono font-black text-xl tracking-wider leading-none">
+                            {wt.ticketCode}
+                          </span>
+                          <span className="text-[10px] text-slate-500 truncate max-w-[110px]">
+                            {wt.serviceName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right flex flex-col gap-0.5 shrink-0">
+                        {wt.priorityLevel !== 'NORMAL' && (
+                          <span className="text-[9px] font-bold uppercase tracking-widest">
+                            {wt.priorityLevel === 'URGENT' ? 'URGENTE' : 'PREFER.'}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-mono text-slate-600">
+                          {wt.issuedAt?.substring(11, 16)}
+                        </span>
+                      </div>
+                    </motion.li>
+                  );
+                })
+              )}
             </AnimatePresence>
           </ul>
 
           {/* Bottom reminder */}
-          <div className="mt-auto p-4 rounded-2xl bg-sky-950/40 border border-sky-800/30 text-xs text-sky-300 text-center leading-relaxed">
+          <div className="shrink-0 p-4 rounded-2xl bg-sky-950/40 border border-sky-800/30 text-xs text-sky-300 text-center leading-relaxed">
             Al escuchar su número, acérquese con su DNI en mano al consultorio indicado.
           </div>
         </div>

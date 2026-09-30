@@ -145,7 +145,9 @@ export const ticketsApi = {
   activeQueue: (serviceId: string | number) =>
     api.get(`/tickets/active-queue?serviceId=${serviceId}`),
   currentRoom: (consultingRoomId: string) =>
-    api.get(`/tickets/current-room?consultingRoomId=${consultingRoomId}`)
+    api.get(`/tickets/current-room?consultingRoomId=${consultingRoomId}`),
+  waitingQueue: (limit = 20) =>
+    api.get(`/tickets/waiting?limit=${limit}`)
 };
 
 export const appointmentsApi = {
