@@ -8,3 +8,4 @@ export { DatePicker } from './DatePicker';
 export { Modal } from './Modal';
 export { Spinner, PageLoader, ConnectionDot } from './Spinner';
 export { Tabs, SideTabs } from './Tabs';
+export { Pagination } from './Pagination';

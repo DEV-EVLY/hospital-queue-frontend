@@ -6,7 +6,22 @@ import { Select } from '../../ui';
 import { reportsApi, medicalServicesApi } from '../../../services/api';
 import { TH, TD, STATUS_LABELS, CHANNEL_LABELS, fmtSeconds } from './_shared';
 
-const today = () => new Date().toISOString().split('T')[0];
+// Local calendar day (toISOString would give the UTC day, wrong after 19:00 in Lima)
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const MAX_RANGE_DAYS = 90;
+
+/** Returns an error message if the range is invalid, otherwise null. */
+const validateRange = (from: string, to: string): string | null => {
+  if (!from || !to) return 'Selecciona fecha de inicio y fin.';
+  if (to < from) return 'La fecha fin no puede ser anterior a la fecha inicio.';
+  const days = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
+  if (days > MAX_RANGE_DAYS) return `El rango no puede superar ${MAX_RANGE_DAYS} días. Reduce el período seleccionado.`;
+  return null;
+};
 
 export const ReportesTab: React.FC = () => {
   const [services,     setServices]     = useState<any[]>([]);
@@ -16,11 +31,14 @@ export const ReportesTab: React.FC = () => {
   const [prioridad,    setPrioridad]    = useState('');
   const [canal,        setCanal]        = useState('');
   const [rows,         setRows]         = useState<any[]>([]);
+  const [searched,     setSearched]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [queryError,   setQueryError]   = useState<string | null>(null);
 
   useEffect(() => {
-    medicalServicesApi.list().then(s => setServices(s as any[])).catch(() => {/* ok */});
+    medicalServicesApi.list()
+      .then(s => setServices(s as any[]))
+      .catch((e: any) => setQueryError(`Error al cargar servicios: ${e.message}`));
   }, []);
 
   const serviceOptions = [
@@ -29,6 +47,8 @@ export const ReportesTab: React.FC = () => {
   ];
 
   const runQuery = async () => {
+    const invalid = validateRange(fechaInicio, fechaFin);
+    if (invalid) { setQueryError(invalid); return; }
     setLoading(true);
     setQueryError(null);
     try {
@@ -38,12 +58,15 @@ export const ReportesTab: React.FC = () => {
       if (canal)     params.channel       = canal;
       const result = await reportsApi.export(params) as any[];
       setRows(Array.isArray(result) ? result : []);
+      setSearched(true);
     } catch (e: any) {
       setQueryError(e.message || 'Error al generar el reporte. Intenta de nuevo.');
     } finally { setLoading(false); }
   };
 
   const downloadCsv = async () => {
+    const invalid = validateRange(fechaInicio, fechaFin);
+    if (invalid) { setQueryError(invalid); return; }
     setLoading(true);
     setQueryError(null);
     try {
@@ -175,7 +198,9 @@ export const ReportesTab: React.FC = () => {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-surface-400 text-sm">
-                    Aplica filtros y presiona Buscar para ver resultados
+                    {searched
+                      ? 'No hay tickets para los filtros seleccionados.'
+                      : 'Aplica filtros y presiona Buscar para ver resultados'}
                   </td>
                 </tr>
               )}

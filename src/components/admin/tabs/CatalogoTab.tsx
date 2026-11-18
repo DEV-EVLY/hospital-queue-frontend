@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, RefreshCw, Edit2, Save, Stethoscope, Building2 } from 'lucide-react';
-import { Card, Badge, Button, Input, Modal, Tabs } from '../../ui';
-import { Select } from '../../ui';
+import { Card, Badge, Button, Input, Modal, Tabs, Select } from '../../ui';
 import { medicalServicesApi, consultingRoomsApi } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
 
 const BLANK_SERVICE = { name: '', ticketPrefix: '', iconName: 'stethoscope', estimatedMinutes: 20 };
-const BLANK_ROOM    = { name: '', code: '', medicalServiceId: '', floor: '', wing: '' };
+const BLANK_ROOM    = { name: '', code: '', medicalServiceId: '', location: '' };
+
+const ROOM_STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'primary' | 'gray' }> = {
+  AVAILABLE: { label: 'Disponible', variant: 'success' },
+  BUSY:      { label: 'Ocupado',    variant: 'warning' },
+  PAUSED:    { label: 'En pausa',   variant: 'primary' },
+  CLOSED:    { label: 'Cerrado',    variant: 'gray' },
+};
+
+const ICON_OPTIONS = [
+  { value: 'stethoscope',   label: 'Estetoscopio' },
+  { value: 'heart',         label: 'Corazón' },
+  { value: 'baby',          label: 'Pediatría' },
+  { value: 'activity',      label: 'Emergencia' },
+  { value: 'flask-conical', label: 'Laboratorio' },
+];
 
 const CATALOG_TABS = [
   { key: 'SERVICIOS',    label: 'Servicios Médicos', icon: <Stethoscope className="w-4 h-4" /> },
@@ -15,50 +29,60 @@ const CATALOG_TABS = [
 ];
 
 export const CatalogoTab: React.FC = () => {
-  const [services,         setServices]         = useState<any[]>([]);
-  const [rooms,            setRooms]            = useState<any[]>([]);
-  const [subTab,           setSubTab]           = useState<'SERVICIOS' | 'CONSULTORIOS'>('SERVICIOS');
+  const [services, setServices] = useState<any[]>([]);
+  const [rooms,    setRooms]    = useState<any[]>([]);
+  const [subTab,   setSubTab]   = useState<'SERVICIOS' | 'CONSULTORIOS'>('SERVICIOS');
 
-  // Services CRUD
-  const [showNewService,   setShowNewService]   = useState(false);
-  const [newService,       setNewService]       = useState({ ...BLANK_SERVICE });
+  // Service modal (create + edit)
+  const [showServiceModal, setShowServiceModal] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-  const [editingService,   setEditingService]   = useState<any>(null);
+  const [serviceForm,      setServiceForm]      = useState<any>({ ...BLANK_SERVICE });
   const [serviceError,     setServiceError]     = useState<string | null>(null);
 
-  // Rooms CRUD
-  const [showNewRoom,   setShowNewRoom]   = useState(false);
-  const [newRoom,       setNewRoom]       = useState({ ...BLANK_ROOM });
+  // Room modal (create + edit)
+  const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
-  const [editingRoom,   setEditingRoom]   = useState<any>(null);
+  const [roomForm,      setRoomForm]      = useState<any>({ ...BLANK_ROOM });
   const [roomError,     setRoomError]     = useState<string | null>(null);
 
-  const loadServices = async () => { try { setServices(await medicalServicesApi.list() as any[]); } catch { /* ok */ } };
-  const loadRooms    = async () => { try { setRooms(await consultingRoomsApi.list() as any[]); } catch { /* ok */ } };
+  const loadServices = async () => {
+    try { setServices(await medicalServicesApi.list() as any[]); }
+    catch (e: any) { setServiceError(`Error al cargar servicios: ${e.message}`); }
+  };
+  const loadRooms = async () => {
+    try { setRooms(await consultingRoomsApi.list() as any[]); }
+    catch (e: any) { setRoomError(`Error al cargar consultorios: ${e.message}`); }
+  };
 
   useEffect(() => { loadServices(); loadRooms(); }, []);
 
-  // ── Services handlers ──────────────────────────────────────────────────────
-  const saveNewService = async () => {
-    if (!newService.name || !newService.ticketPrefix) {
+  // ── Service handlers ───────────────────────────────────────────────────────
+
+  const openCreateService = () => {
+    setServiceForm({ ...BLANK_SERVICE }); setEditingServiceId(null); setServiceError(null); setShowServiceModal(true);
+  };
+  const openEditService = (s: any) => {
+    setServiceForm({ name: s.name, ticketPrefix: s.ticketPrefix, iconName: s.iconName || 'stethoscope', estimatedMinutes: s.estimatedMinutes });
+    setEditingServiceId(s.id); setServiceError(null); setShowServiceModal(true);
+  };
+  const closeServiceModal = () => {
+    setShowServiceModal(false); setServiceForm({ ...BLANK_SERVICE }); setServiceError(null);
+  };
+
+  const saveService = async () => {
+    if (!serviceForm.name || !serviceForm.ticketPrefix) {
       setServiceError('Nombre y prefijo de ticket son obligatorios.'); return;
     }
     setServiceError(null);
     try {
-      const created = await medicalServicesApi.create(newService);
-      setServices(prev => [...prev, created]);
-      setNewService({ ...BLANK_SERVICE });
-      setShowNewService(false);
-    } catch (e: any) { setServiceError(e.message); }
-  };
-
-  const saveEditService = async () => {
-    if (!editingService?.name) { setServiceError('El nombre es obligatorio.'); return; }
-    setServiceError(null);
-    try {
-      const updated = await medicalServicesApi.update(editingServiceId!, editingService);
-      setServices(prev => prev.map(s => s.id === editingServiceId ? updated : s));
-      setEditingServiceId(null); setEditingService(null);
+      if (editingServiceId) {
+        const updated = await medicalServicesApi.update(editingServiceId, serviceForm);
+        setServices(prev => prev.map(s => s.id === editingServiceId ? updated : s));
+      } else {
+        const created = await medicalServicesApi.create(serviceForm);
+        setServices(prev => [...prev, created]);
+      }
+      setShowServiceModal(false);
     } catch (e: any) { setServiceError(e.message); }
   };
 
@@ -69,34 +93,41 @@ export const CatalogoTab: React.FC = () => {
     } catch (e: any) { setServiceError(`Error: ${e.message}`); }
   };
 
-  // ── Rooms handlers ─────────────────────────────────────────────────────────
-  const saveNewRoom = async () => {
-    if (!newRoom.name || !newRoom.code) {
+  // ── Room handlers ──────────────────────────────────────────────────────────
+
+  const openCreateRoom = () => {
+    setRoomForm({ ...BLANK_ROOM }); setEditingRoomId(null); setRoomError(null); setShowRoomModal(true);
+  };
+  const openEditRoom = (r: any) => {
+    setRoomForm({ name: r.name, code: r.code, medicalServiceId: r.medicalServiceId || '', location: r.location || '' });
+    setEditingRoomId(r.id); setRoomError(null); setShowRoomModal(true);
+  };
+  const closeRoomModal = () => {
+    setShowRoomModal(false); setRoomForm({ ...BLANK_ROOM }); setRoomError(null);
+  };
+
+  const saveRoom = async () => {
+    if (!roomForm.name || !roomForm.code) {
       setRoomError('Nombre y código son obligatorios.'); return;
     }
     setRoomError(null);
+    const payload = { ...roomForm, medicalServiceId: roomForm.medicalServiceId || null };
     try {
-      const created = await consultingRoomsApi.create(newRoom);
-      setRooms(prev => [...prev, created]);
-      setNewRoom({ ...BLANK_ROOM });
-      setShowNewRoom(false);
-    } catch (e: any) { setRoomError(e.message); }
-  };
-
-  const saveEditRoom = async () => {
-    if (!editingRoom?.name) { setRoomError('El nombre es obligatorio.'); return; }
-    setRoomError(null);
-    try {
-      const updated = await consultingRoomsApi.update(editingRoomId!, editingRoom);
-      setRooms(prev => prev.map(r => r.id === editingRoomId ? updated : r));
-      setEditingRoomId(null); setEditingRoom(null);
+      if (editingRoomId) {
+        const updated = await consultingRoomsApi.update(editingRoomId, payload);
+        setRooms(prev => prev.map(r => r.id === editingRoomId ? updated : r));
+      } else {
+        const created = await consultingRoomsApi.create(payload);
+        setRooms(prev => [...prev, created]);
+      }
+      setShowRoomModal(false);
     } catch (e: any) { setRoomError(e.message); }
   };
 
   const toggleRoom = async (id: string) => {
     try {
-      await consultingRoomsApi.toggleActive(id);
-      setRooms(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
+      const updated = await consultingRoomsApi.toggleActive(id);
+      setRooms(prev => prev.map(r => r.id === id ? updated : r));
     } catch (e: any) { setRoomError(`Error: ${e.message}`); }
   };
 
@@ -122,6 +153,7 @@ export const CatalogoTab: React.FC = () => {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.15 }}
         >
+          {/* ── Servicios ─────────────────────────────────────────────────── */}
           {subTab === 'SERVICIOS' && (
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
@@ -133,15 +165,12 @@ export const CatalogoTab: React.FC = () => {
                   <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadServices}>
                     Recargar
                   </Button>
-                  <Button size="sm" icon={<Plus className="w-4 h-4" />}
-                    onClick={() => { setShowNewService(true); setServiceError(null); }}>
+                  <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreateService}>
                     Agregar
                   </Button>
                 </div>
               </div>
-              <div className="px-6 py-3">
-                <FormError msg={serviceError} onDismiss={() => setServiceError(null)} />
-              </div>
+              {serviceError && <div className="px-6 pt-3"><FormError msg={serviceError} onDismiss={() => setServiceError(null)} /></div>}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -156,53 +185,24 @@ export const CatalogoTab: React.FC = () => {
                   <tbody>
                     {services.map(s => (
                       <tr key={s.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
-                        {editingServiceId === s.id ? (
-                          <>
-                            <td className="px-4 py-2" colSpan={3}>
-                              <div className="grid grid-cols-3 gap-2">
-                                <Input value={editingService.name} placeholder="Nombre"
-                                  onChange={e => setEditingService((p: any) => ({ ...p, name: e.target.value }))} fullWidth />
-                                <Input value={editingService.ticketPrefix} placeholder="Prefijo" maxLength={3}
-                                  onChange={e => setEditingService((p: any) => ({ ...p, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
-                                <Input type="number" value={editingService.estimatedMinutes}
-                                  onChange={e => setEditingService((p: any) => ({ ...p, estimatedMinutes: +e.target.value }))} fullWidth />
-                              </div>
-                            </td>
-                            <TD></TD>
-                            <TD className="text-right">
-                              <div className="flex gap-2 justify-end">
-                                <Button size="sm" icon={<Save className="w-3.5 h-3.5" />} onClick={saveEditService}>
-                                  Guardar
-                                </Button>
-                                <Button size="sm" variant="ghost"
-                                  onClick={() => { setEditingServiceId(null); setEditingService(null); }}>
-                                  ✕
-                                </Button>
-                              </div>
-                            </TD>
-                          </>
-                        ) : (
-                          <>
-                            <TD><span className="font-semibold text-surface-900">{s.name}</span></TD>
-                            <TD><Badge variant="primary">[{s.ticketPrefix}]</Badge></TD>
-                            <TD className="text-right text-surface-600 font-mono">{s.estimatedMinutes} min</TD>
-                            <TD>
-                              <button onClick={() => toggleService(s.id)}>
-                                {s.active
-                                  ? <Badge variant="success" dot>Activo</Badge>
-                                  : <Badge variant="gray" dot>Inactivo</Badge>}
-                              </button>
-                            </TD>
-                            <TD className="text-right">
-                              <button
-                                onClick={() => { setEditingServiceId(s.id); setEditingService({ ...s }); setServiceError(null); }}
-                                className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                            </TD>
-                          </>
-                        )}
+                        <TD><span className="font-semibold text-surface-900">{s.name}</span></TD>
+                        <TD><Badge variant="primary">[{s.ticketPrefix}]</Badge></TD>
+                        <TD className="text-right text-surface-600 font-mono">{s.estimatedMinutes} min</TD>
+                        <TD>
+                          <button onClick={() => toggleService(s.id)}>
+                            {s.active
+                              ? <Badge variant="success" dot>Activo</Badge>
+                              : <Badge variant="gray" dot>Inactivo</Badge>}
+                          </button>
+                        </TD>
+                        <TD className="text-right">
+                          <button
+                            onClick={() => openEditService(s)}
+                            className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </TD>
                       </tr>
                     ))}
                     {services.length === 0 && (
@@ -218,6 +218,7 @@ export const CatalogoTab: React.FC = () => {
             </Card>
           )}
 
+          {/* ── Consultorios ──────────────────────────────────────────────── */}
           {subTab === 'CONSULTORIOS' && (
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
@@ -229,15 +230,12 @@ export const CatalogoTab: React.FC = () => {
                   <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadRooms}>
                     Recargar
                   </Button>
-                  <Button size="sm" icon={<Plus className="w-4 h-4" />}
-                    onClick={() => { setShowNewRoom(true); setRoomError(null); }}>
+                  <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreateRoom}>
                     Agregar
                   </Button>
                 </div>
               </div>
-              <div className="px-6 py-3">
-                <FormError msg={roomError} onDismiss={() => setRoomError(null)} />
-              </div>
+              {roomError && <div className="px-6 pt-3"><FormError msg={roomError} onDismiss={() => setRoomError(null)} /></div>}
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -253,64 +251,30 @@ export const CatalogoTab: React.FC = () => {
                   <tbody>
                     {rooms.map(r => (
                       <tr key={r.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
-                        {editingRoomId === r.id ? (
-                          <>
-                            <td className="px-4 py-2" colSpan={4}>
-                              <div className="grid grid-cols-4 gap-2">
-                                <Input value={editingRoom.name} placeholder="Nombre"
-                                  onChange={e => setEditingRoom((p: any) => ({ ...p, name: e.target.value }))} fullWidth />
-                                <Input value={editingRoom.code} placeholder="Código"
-                                  onChange={e => setEditingRoom((p: any) => ({ ...p, code: e.target.value }))} fullWidth />
-                                <Select
-                                  value={editingRoom.medicalServiceId || ''}
-                                  onChange={val => setEditingRoom((p: any) => ({ ...p, medicalServiceId: val }))}
-                                  options={activeServiceOptions}
-                                  fullWidth
-                                />
-                                <Input value={editingRoom.floor || ''} placeholder="Piso"
-                                  onChange={e => setEditingRoom((p: any) => ({ ...p, floor: e.target.value }))} fullWidth />
-                              </div>
-                            </td>
-                            <TD></TD>
-                            <TD className="text-right">
-                              <div className="flex gap-2 justify-end">
-                                <Button size="sm" icon={<Save className="w-3.5 h-3.5" />} onClick={saveEditRoom}>
-                                  Guardar
-                                </Button>
-                                <Button size="sm" variant="ghost"
-                                  onClick={() => { setEditingRoomId(null); setEditingRoom(null); }}>
-                                  ✕
-                                </Button>
-                              </div>
-                            </TD>
-                          </>
-                        ) : (
-                          <>
-                            <TD><span className="font-semibold text-surface-900">{r.name}</span></TD>
-                            <TD><code className="text-xs font-mono text-primary-700">{r.code}</code></TD>
-                            <TD className="text-surface-600">
-                              {services.find(s => s.id === r.medicalServiceId)?.name || <span className="text-surface-300">—</span>}
-                            </TD>
-                            <TD className="text-surface-500">
-                              {[r.floor, r.wing].filter(Boolean).join(' / ') || <span className="text-surface-300">—</span>}
-                            </TD>
-                            <TD>
-                              <button onClick={() => toggleRoom(r.id)}>
-                                {r.active
-                                  ? <Badge variant="success" dot>Activo</Badge>
-                                  : <Badge variant="gray" dot>Inactivo</Badge>}
-                              </button>
-                            </TD>
-                            <TD className="text-right">
-                              <button
-                                onClick={() => { setEditingRoomId(r.id); setEditingRoom({ ...r }); setRoomError(null); }}
-                                className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                            </TD>
-                          </>
-                        )}
+                        <TD><span className="font-semibold text-surface-900">{r.name}</span></TD>
+                        <TD><code className="text-xs font-mono text-primary-700">{r.code}</code></TD>
+                        <TD className="text-surface-600">
+                          {services.find(s => s.id === r.medicalServiceId)?.name || <span className="text-surface-300">—</span>}
+                        </TD>
+                        <TD className="text-surface-500">
+                          {r.location || <span className="text-surface-300">—</span>}
+                        </TD>
+                        <TD>
+                          <button onClick={() => toggleRoom(r.id)}
+                            title={r.status === 'CLOSED' ? 'Reabrir consultorio' : 'Cerrar consultorio'}>
+                            <Badge variant={ROOM_STATUS[r.status]?.variant ?? 'gray'} dot>
+                              {ROOM_STATUS[r.status]?.label ?? r.status}
+                            </Badge>
+                          </button>
+                        </TD>
+                        <TD className="text-right">
+                          <button
+                            onClick={() => openEditRoom(r)}
+                            className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        </TD>
                       </tr>
                     ))}
                     {rooms.length === 0 && (
@@ -328,20 +292,18 @@ export const CatalogoTab: React.FC = () => {
         </motion.div>
       </AnimatePresence>
 
-      {/* New service modal */}
+      {/* ── Service modal (create / edit) ──────────────────────────────────── */}
       <Modal
-        open={showNewService}
-        onClose={() => { setShowNewService(false); setNewService({ ...BLANK_SERVICE }); setServiceError(null); }}
-        title="Nuevo Servicio Médico"
+        open={showServiceModal}
+        onClose={closeServiceModal}
+        title={editingServiceId ? 'Editar Servicio Médico' : 'Nuevo Servicio Médico'}
         description="Configura el servicio, prefijo de ticket y tiempo estimado"
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setShowNewService(false); setNewService({ ...BLANK_SERVICE }); }}>
-              Cancelar
-            </Button>
-            <Button icon={<Save className="w-4 h-4" />} onClick={saveNewService}>
-              Crear Servicio
+            <Button variant="secondary" onClick={closeServiceModal}>Cancelar</Button>
+            <Button icon={<Save className="w-4 h-4" />} onClick={saveService}>
+              {editingServiceId ? 'Guardar Cambios' : 'Crear Servicio'}
             </Button>
           </>
         }
@@ -349,43 +311,36 @@ export const CatalogoTab: React.FC = () => {
         <FormError msg={serviceError} onDismiss={() => setServiceError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Nombre *" placeholder="Cardiología"
-            value={newService.name} onChange={e => setNewService(s => ({ ...s, name: e.target.value }))} fullWidth />
+            value={serviceForm.name}
+            onChange={e => setServiceForm((f: any) => ({ ...f, name: e.target.value }))} fullWidth />
           <Input label="Prefijo de ticket *" placeholder="C" maxLength={3}
-            value={newService.ticketPrefix}
-            onChange={e => setNewService(s => ({ ...s, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
+            value={serviceForm.ticketPrefix}
+            onChange={e => setServiceForm((f: any) => ({ ...f, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
           <Input label="Tiempo estimado (min)" type="number" min={1}
-            value={newService.estimatedMinutes}
-            onChange={e => setNewService(s => ({ ...s, estimatedMinutes: +e.target.value }))} fullWidth />
+            value={serviceForm.estimatedMinutes}
+            onChange={e => setServiceForm((f: any) => ({ ...f, estimatedMinutes: +e.target.value }))} fullWidth />
           <Select
             label="Ícono"
-            value={newService.iconName}
-            onChange={val => setNewService(s => ({ ...s, iconName: val }))}
-            options={[
-              { value: 'stethoscope', label: 'Estetoscopio' },
-              { value: 'heart', label: 'Corazón' },
-              { value: 'baby', label: 'Pediatría' },
-              { value: 'activity', label: 'Emergencia' },
-              { value: 'flask-conical', label: 'Laboratorio' },
-            ]}
+            value={serviceForm.iconName}
+            onChange={val => setServiceForm((f: any) => ({ ...f, iconName: val }))}
+            options={ICON_OPTIONS}
             fullWidth
           />
         </div>
       </Modal>
 
-      {/* New room modal */}
+      {/* ── Room modal (create / edit) ─────────────────────────────────────── */}
       <Modal
-        open={showNewRoom}
-        onClose={() => { setShowNewRoom(false); setNewRoom({ ...BLANK_ROOM }); setRoomError(null); }}
-        title="Nuevo Consultorio"
+        open={showRoomModal}
+        onClose={closeRoomModal}
+        title={editingRoomId ? 'Editar Consultorio' : 'Nuevo Consultorio'}
         description="Registra código, servicio asignado y ubicación"
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => { setShowNewRoom(false); setNewRoom({ ...BLANK_ROOM }); }}>
-              Cancelar
-            </Button>
-            <Button icon={<Save className="w-4 h-4" />} onClick={saveNewRoom}>
-              Crear Consultorio
+            <Button variant="secondary" onClick={closeRoomModal}>Cancelar</Button>
+            <Button icon={<Save className="w-4 h-4" />} onClick={saveRoom}>
+              {editingRoomId ? 'Guardar Cambios' : 'Crear Consultorio'}
             </Button>
           </>
         }
@@ -393,20 +348,21 @@ export const CatalogoTab: React.FC = () => {
         <FormError msg={roomError} onDismiss={() => setRoomError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Nombre *" placeholder="Consultorio 1"
-            value={newRoom.name} onChange={e => setNewRoom(r => ({ ...r, name: e.target.value }))} fullWidth />
+            value={roomForm.name}
+            onChange={e => setRoomForm((f: any) => ({ ...f, name: e.target.value }))} fullWidth />
           <Input label="Código *" placeholder="C-01"
-            value={newRoom.code} onChange={e => setNewRoom(r => ({ ...r, code: e.target.value }))} fullWidth />
+            value={roomForm.code}
+            onChange={e => setRoomForm((f: any) => ({ ...f, code: e.target.value }))} fullWidth />
           <Select
             label="Servicio médico"
-            value={newRoom.medicalServiceId}
-            onChange={val => setNewRoom(r => ({ ...r, medicalServiceId: val }))}
+            value={roomForm.medicalServiceId}
+            onChange={val => setRoomForm((f: any) => ({ ...f, medicalServiceId: val }))}
             options={activeServiceOptions}
             fullWidth
           />
-          <Input label="Piso" placeholder="Piso 1"
-            value={newRoom.floor} onChange={e => setNewRoom(r => ({ ...r, floor: e.target.value }))} fullWidth />
-          <Input label="Ala / Pabellón" placeholder="Pabellón Central"
-            value={newRoom.wing} onChange={e => setNewRoom(r => ({ ...r, wing: e.target.value }))} fullWidth
+          <Input label="Ubicación" placeholder="Planta Baja - Ala A"
+            value={roomForm.location}
+            onChange={e => setRoomForm((f: any) => ({ ...f, location: e.target.value }))} fullWidth
             className="sm:col-span-2" />
         </div>
       </Modal>

@@ -405,16 +405,19 @@ export const KioskoDispensador: React.FC = () => {
 
                 {/* DNI display */}
                 <Card className="w-full" padding="none">
-                  <div
-                    className="w-full rounded-xl bg-surface-50 border-2 border-surface-200 px-6 py-5 text-center font-mono text-5xl font-bold tracking-widest text-surface-900 min-h-[84px] flex items-center justify-center transition-colors"
-                    style={{ letterSpacing: '0.15em' }}
-                  >
-                    {dni || (
-                      <span className="text-surface-300 text-xl font-sans font-normal tracking-normal">
-                        {t.dni_placeholder}
-                      </span>
-                    )}
-                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    maxLength={12}
+                    value={dni}
+                    placeholder={t.dni_placeholder}
+                    onChange={e => { setErrorMsg(null); setDni(e.target.value.replace(/\D/g, '').slice(0, 12)); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleContinuarDni(); }}
+                    className={`w-full rounded-xl bg-surface-50 border-2 border-surface-200 px-6 py-0 h-[84px] block text-center text-surface-900 transition-colors focus:outline-none focus:border-primary-400 placeholder:text-surface-300 ${dni ? 'font-mono text-5xl font-bold' : 'font-sans text-xl font-normal'}`}
+                    style={{ letterSpacing: dni ? '0.15em' : 'normal', lineHeight: 'normal' }}
+                  />
                 </Card>
 
                 {/* Instruction */}

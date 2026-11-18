@@ -15,22 +15,35 @@ function parseToken(token: string): TokenPayload | null {
   }
 }
 
-export function getRole(): 'ADMIN' | 'OPERATOR' | null {
+export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'DOCTOR' | 'OPERATOR' | 'KIOSK';
+
+const VALID_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'DOCTOR', 'OPERATOR', 'KIOSK'];
+
+export function getRole(): UserRole | null {
   const token = localStorage.getItem('token');
   if (!token) return null;
   const p = parseToken(token);
   if (!p) return null;
 
-  // Try common Spring Security JWT claim patterns
-  if (p.role) return p.role.includes('ADMIN') ? 'ADMIN' : 'OPERATOR';
-  if (p.roles?.length) return p.roles.some(r => r.includes('ADMIN')) ? 'ADMIN' : 'OPERATOR';
-  if (p.authorities?.length) {
-    const hasAdmin = p.authorities.some(a =>
-      typeof a === 'string' ? a.includes('ADMIN') : a.authority?.includes('ADMIN')
-    );
-    return hasAdmin ? 'ADMIN' : 'OPERATOR';
+  let raw: string | null = null;
+  if (p.role) {
+    raw = p.role;
+  } else if (p.roles?.length) {
+    raw = p.roles[0];
+  } else if (p.authorities?.length) {
+    const a = p.authorities[0];
+    raw = typeof a === 'string' ? a : (a.authority ?? null);
   }
-  return null;
+
+  if (!raw) return null;
+  const normalized = raw.replace(/^ROLE_/, '').toUpperCase() as UserRole;
+  return VALID_ROLES.includes(normalized) ? normalized : null;
+}
+
+export function getUserId(): string | null {
+  const token = localStorage.getItem('token');
+  if (!token) return null;
+  return parseToken(token)?.sub ?? null;
 }
 
 export function isTokenExpired(): boolean {

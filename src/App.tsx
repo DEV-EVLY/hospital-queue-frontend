@@ -21,7 +21,7 @@ function RequireAuth() {
 
 function RequireAdmin() {
   const role = getRole();
-  if (role !== 'ADMIN') return <Navigate to="/operador" replace />;
+  if (role !== 'ADMIN' && role !== 'SUPERVISOR') return <Navigate to="/operador" replace />;
   return <Outlet />;
 }
 
@@ -147,7 +147,8 @@ export const App: React.FC = () => {
     const handle401 = () => {
       localStorage.removeItem('token');
       localStorage.removeItem('userId');
-      navigate('/login', { state: { from: location }, replace: true });
+      const staff = location.pathname.startsWith('/operador') || location.pathname.startsWith('/admin');
+      navigate('/login', { state: staff ? { from: location } : undefined, replace: true });
     };
     window.addEventListener('auth:unauthorized', handle401);
     return () => window.removeEventListener('auth:unauthorized', handle401);
@@ -155,10 +156,12 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = () => {
     const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-    if (from && from !== '/login') {
+    // Only return to staff routes; public terminals (/kiosko, /cartelera) must never hijack the post-login landing
+    if (from && (from.startsWith('/operador') || from.startsWith('/admin'))) {
       navigate(from, { replace: true });
     } else {
-      navigate(getRole() === 'ADMIN' ? '/admin' : '/operador', { replace: true });
+      const role = getRole();
+      navigate(role === 'ADMIN' || role === 'SUPERVISOR' ? '/admin' : '/operador', { replace: true });
     }
   };
 

@@ -58,7 +58,9 @@ export const api = {
       const errData = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(errData.message || 'Error en la petición');
     }
-    return await res.json();
+    // 204 No Content responses have an empty body
+    const text = await res.text();
+    return text ? JSON.parse(text) : ({} as T);
   },
 
   async patch<T = any>(endpoint: string, body?: any): Promise<T> {
@@ -147,7 +149,16 @@ export const ticketsApi = {
   currentRoom: (consultingRoomId: string) =>
     api.get(`/tickets/current-room?consultingRoomId=${consultingRoomId}`),
   waitingQueue: (limit = 20) =>
-    api.get(`/tickets/waiting?limit=${limit}`)
+    api.get(`/tickets/waiting?limit=${limit}`),
+  adminList: (date?: string, page = 0, size = 50) => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (date) params.set('date', date);
+    return api.get(`/tickets/admin?${params}`);
+  },
+  cancel: (id: string) =>
+    api.post(`/tickets/${id}/cancel`),
+  reprioritize: (id: string, priorityLevel: string) =>
+    api.put(`/tickets/${id}/reprioritize`, { priorityLevel }),
 };
 
 export const appointmentsApi = {
@@ -167,9 +178,12 @@ export const priorityRulesApi = {
 };
 
 export const reportsApi = {
-  dashboard: (date?: string) => {
-    const qs = date ? `?date=${date}` : '';
-    return api.get(`/reports/dashboard${qs}`);
+  dashboard: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to)   params.set('to', to);
+    const qs = params.toString();
+    return api.get(`/reports/dashboard${qs ? `?${qs}` : ''}`);
   },
   export: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -204,8 +218,24 @@ export const consultingRoomsApi = {
   toggleActive: (id: string | number) => api.patch(`/consulting-rooms/${id}/toggle`),
 };
 
+export const userGroupsApi = {
+  list: () => api.get('/user-groups'),
+  memberships: () => api.get('/user-groups/memberships'),
+  create: (body: any) => api.post('/user-groups', body),
+  update: (id: string, body: any) => api.put(`/user-groups/${id}`, body),
+  toggleActive: (id: string) => api.patch(`/user-groups/${id}/toggle`),
+  remove: (id: string) => api.delete(`/user-groups/${id}`),
+  members: (id: string) => api.get(`/user-groups/${id}/members`),
+  addMember: (id: string, userId: string) => api.put(`/user-groups/${id}/members/${userId}`),
+  removeMember: (id: string, userId: string) => api.delete(`/user-groups/${id}/members/${userId}`),
+};
+
 export const usersApi = {
-  list: () => api.get('/users'),
+  list: (page = 0, size = 20, groupId?: string) => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (groupId) params.set('groupId', groupId);
+    return api.get(`/users?${params}`);
+  },
   create: (body: any) => api.post('/users', body),
   update: (id: string | number, body: any) => api.put(`/users/${id}`, body),
   toggleActive: (id: string | number) => api.patch(`/users/${id}/toggle`),
@@ -214,16 +244,20 @@ export const usersApi = {
 };
 
 export const patientsApi = {
+  list: (page = 0, size = 20) => api.get(`/patients?page=${page}&size=${size}`),
   search: (documentType: string, documentNumber: string) =>
     api.get(
       `/patients/search?documentType=${encodeURIComponent(documentType)}&documentNumber=${encodeURIComponent(documentNumber)}`
-    )
+    ),
+  create: (body: any) => api.post('/patients', body),
+  update: (id: string, body: any) => api.put(`/patients/${id}`, body),
 };
 
 export const doctorsApi = {
-  list: (status?: string) => {
-    const qs = status ? `?status=${status}` : '';
-    return api.get(`/doctors${qs}`);
+  list: (status?: string, page = 0, size = 50) => {
+    const params = new URLSearchParams({ page: String(page), size: String(size) });
+    if (status) params.set('status', status);
+    return api.get(`/doctors?${params}`);
   },
   findById: (id: string) => api.get(`/doctors/${id}`),
   bySpecialty: (specialtyId: string) => api.get(`/doctors/by-specialty/${specialtyId}`),
@@ -234,5 +268,6 @@ export const doctorsApi = {
 
 export const specialtiesApi = {
   list: () => api.get('/specialties'),
-  findById: (id: string) => api.get(`/specialties/${id}`)
+  findById: (id: string) => api.get(`/specialties/${id}`),
+  create: (body: any) => api.post('/specialties', body),
 };

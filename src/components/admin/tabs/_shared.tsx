@@ -46,8 +46,13 @@ export const TD: React.FC<{ children?: React.ReactNode; className?: string }> = 
 
 // ── Shared label maps ─────────────────────────────────────────────────────────
 export const STATUS_LABELS: Record<string, string> = {
-  WAITING: 'En Espera', CALLED: 'Llamado', IN_ATTENTION: 'En Atención',
-  ATTENDED: 'Atendido', NO_SHOW: 'No se Presentó', DERIVED: 'Derivado', CANCELLED: 'Cancelado',
+  WAITING:      'En Espera',
+  CALLED:       'Llamado',
+  IN_ATTENTION: 'En Atención',
+  ATTENDED:     'Atendido',
+  NOT_ATTENDED: 'No Presentado',
+  REFERRED:     'Derivado',
+  CANCELLED:    'Cancelado',
 };
 
 export const CHANNEL_LABELS: Record<string, string> = {

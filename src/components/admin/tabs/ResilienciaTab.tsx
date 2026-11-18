@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, Download, AlertTriangle } from 'lucide-react';
 import { Card, Button } from '../../ui';
 import { circuitBreakerApi } from '../../../services/api';
+import { FormError } from './_shared';
 import { CircuitBreakerStatus } from '../../../types';
 
 export const ResilienciaTab: React.FC = () => {
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus | null>(null);
   const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
 
   const load = async () => {
     try { setCbStatus(await circuitBreakerApi.status() as CircuitBreakerStatus); } catch { /* ok */ }
@@ -20,12 +22,18 @@ export const ResilienciaTab: React.FC = () => {
 
   const handleSyncNow = async () => {
     setLoading(true);
-    try { await circuitBreakerApi.syncNow(); load(); } catch { /* ok */ } finally { setLoading(false); }
+    setError(null);
+    try { await circuitBreakerApi.syncNow(); load(); } catch (e: any) {
+      setError(`Error al sincronizar: ${e.message}`);
+    } finally { setLoading(false); }
   };
 
   const handleDownload = async () => {
     setLoading(true);
-    try { await circuitBreakerApi.downloadOfflineCsv(); } catch { /* ok */ } finally { setLoading(false); }
+    setError(null);
+    try { await circuitBreakerApi.downloadOfflineCsv(); } catch (e: any) {
+      setError(`Error al descargar: ${e.message}`);
+    } finally { setLoading(false); }
   };
 
   if (!cbStatus) {
@@ -59,6 +67,7 @@ export const ResilienciaTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <FormError msg={error} onDismiss={() => setError(null)} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className={`border-2 ${stateColor}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-2">
