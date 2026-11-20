@@ -3,16 +3,16 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 
-export interface SelectOption {
-  value: string;
+export interface SelectOption<T extends string = string> {
+  value: T;
   label: string;
   description?: string;
   disabled?: boolean;
 }
 
-export interface SelectGroup {
+export interface SelectGroup<T extends string = string> {
   group: string;
-  options: SelectOption[];
+  options: SelectOption<T>[];
 }
 
 type SelectItems = SelectOption[] | SelectGroup[];
@@ -47,7 +47,7 @@ const dropdownItemSize = {
   lg:  'px-4 py-3 text-sm',
 };
 
-export const Select = ({
+export const SelectImpl = ({
   options, value, onChange, label, placeholder = 'Seleccionar...',
   error, hint, fullWidth, disabled, size = 'md', className,
 }: SelectProps) => {
@@ -219,3 +219,15 @@ export const Select = ({
     </div>
   );
 };
+
+/** Props genéricas: con `T` literal (p. ej. DoctorStatus) `value`, `options` y `onChange` quedan tipados. */
+export interface TypedSelectProps<T extends string = string>
+  extends Omit<SelectProps, 'options' | 'value' | 'onChange'> {
+  options: SelectOption<T>[] | SelectGroup<T>[];
+  value: T;
+  onChange: (value: T) => void;
+}
+
+export const Select = SelectImpl as unknown as <T extends string = string>(
+  props: TypedSelectProps<T>,
+) => React.ReactElement;

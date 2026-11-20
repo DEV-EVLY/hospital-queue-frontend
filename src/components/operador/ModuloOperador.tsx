@@ -8,26 +8,27 @@ import {
   Button, Card, CardHeader, Select,
   StatusBadge, PriorityBadge, PageLoader, ConnectionDot, Modal,
 } from '../ui';
-import { consultingRoomsApi, medicalServicesApi, ticketsApi } from '../../services/api';
+import { consultingRoomsApi, medicalServicesApi, ticketsApi, getErrorMessage } from '../../services/api';
 import { getSocket } from '../../services/socket';
+import type { ConsultingRoom, MedicalService, PriorityLevel, Ticket } from '../../types/api';
 
 const minutesWaiting = (issuedAt: string): string => {
   const diff = Math.round((Date.now() - new Date(issuedAt).getTime()) / 60000);
   return diff < 1 ? '< 1 min' : `${diff} min`;
 };
 
-const PRIORITY_BADGE: Record<string, string> = {
+const PRIORITY_BADGE: Record<PriorityLevel, string> = {
   URGENT:       'bg-red-100 text-red-700',
   PREFERENTIAL: 'bg-amber-100 text-amber-800',
   NORMAL:       'bg-primary-100 text-primary-700',
 };
 
 export const ModuloOperador: React.FC = () => {
-  const [rooms, setRooms]               = useState<any[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
-  const [services, setServices]         = useState<any[]>([]);
-  const [currentTicket, setCurrentTicket] = useState<any | null>(null);
-  const [waitingQueue, setWaitingQueue] = useState<any[]>([]);
+  const [rooms, setRooms]               = useState<ConsultingRoom[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<ConsultingRoom | null>(null);
+  const [services, setServices]         = useState<MedicalService[]>([]);
+  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
+  const [waitingQueue, setWaitingQueue] = useState<Ticket[]>([]);
   const [loading, setLoading]           = useState(false);
   const [initLoading, setInitLoading]   = useState(true);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -38,15 +39,15 @@ export const ModuloOperador: React.FC = () => {
 
   const loadQueue = useCallback(async (serviceId: string) => {
     try {
-      const data = await ticketsApi.activeQueue(serviceId) as any;
+      const data = await ticketsApi.activeQueue(serviceId);
       setWaitingQueue(Array.isArray(data) ? data : []);
     } catch { /* empty queue ok */ }
   }, []);
 
   const loadCurrentTicket = useCallback(async (roomId: string) => {
     try {
-      const ticket = await ticketsApi.currentRoom(roomId) as any;
-      if (ticket?.id) setCurrentTicket(ticket);
+      const ticket = await ticketsApi.currentRoom(roomId);
+      if (ticket) setCurrentTicket(ticket);
     } catch { /* no active ticket for this room */ }
   }, []);
 
@@ -54,8 +55,8 @@ export const ModuloOperador: React.FC = () => {
     const init = async () => {
       try {
         const [roomData, svcData] = await Promise.all([
-          consultingRoomsApi.list() as Promise<any[]>,
-          medicalServicesApi.list() as Promise<any[]>,
+          consultingRoomsApi.list(),
+          medicalServicesApi.list(),
         ]);
         setRooms(roomData);
         setServices(svcData);
@@ -80,7 +81,7 @@ export const ModuloOperador: React.FC = () => {
     es.on('TICKET_RECALLED',     reloadQueue);
     es.on('PRIORITY_UPDATED',    reloadQueue);
     es.on('ATTENTION_COMPLETED', reloadQueue);
-    const onConn = (data: any) => setSseConnected(data.connected);
+    const onConn = (data: { connected: boolean }) => setSseConnected(data.connected);
     es.on('connection_status', onConn);
     return () => {
       es.off('TICKET_DISPENSED',    reloadQueue);
@@ -93,9 +94,9 @@ export const ModuloOperador: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoom?.medicalServiceId, loadQueue]);
 
-  const serviceName = (id: string) => services.find(s => s.id === id)?.name ?? 'Servicio';
+  const serviceName = (id: string | null) => services.find(s => s.id === id)?.name ?? 'Servicio';
 
-  const handleSelectRoom = (room: any) => {
+  const handleSelectRoom = (room: ConsultingRoom) => {
     setSelectedRoom(room);
     setCurrentTicket(null);
     setError(null);
@@ -120,11 +121,11 @@ export const ModuloOperador: React.FC = () => {
         medicalServiceId: selectedRoom.medicalServiceId,
         consultingRoomId: selectedRoom.id,
         operatorId,
-      }) as any;
+      });
       setCurrentTicket(ticket);
       loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: any) {
-      setError(e.message || 'No hay más pacientes en espera');
+    } catch (e: unknown) {
+      setError(getErrorMessage(e) || 'No hay más pacientes en espera');
     } finally {
       setLoading(false);
     }
@@ -133,15 +134,15 @@ export const ModuloOperador: React.FC = () => {
   const handleRecall = async () => {
     if (!currentTicket) return;
     try { await ticketsApi.recall(currentTicket.id); }
-    catch (e: any) { setError(`Error al rellamar: ${e.message}`); }
+    catch (e: unknown) { setError(`Error al rellamar: ${getErrorMessage(e)}`); }
   };
 
   const handleStartAttention = async () => {
     if (!currentTicket) return;
     try {
-      const updated = await ticketsApi.startAttention(currentTicket.id) as any;
+      const updated = await ticketsApi.startAttention(currentTicket.id);
       setCurrentTicket(updated);
-    } catch (e: any) { setError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
   };
 
   const handleCompleteAttention = async () => {
@@ -152,7 +153,7 @@ export const ModuloOperador: React.FC = () => {
       setShowCompleteModal(false);
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: any) { setError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   };
 
@@ -163,7 +164,7 @@ export const ModuloOperador: React.FC = () => {
       await ticketsApi.markAbsent(currentTicket.id);
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: any) { setError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   };
 
@@ -176,7 +177,7 @@ export const ModuloOperador: React.FC = () => {
       setDeriveServiceId('');
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: any) { setError(`Error al derivar: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al derivar: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   };
 
@@ -256,7 +257,7 @@ export const ModuloOperador: React.FC = () => {
               title="Turno en Consultorio"
               subtitle={selectedRoom ? `${selectedRoom.name} · ${serviceName(selectedRoom.medicalServiceId)}` : ''}
               action={currentTicket && (
-                <StatusBadge status={currentTicket.status === 'IN_ATTENTION' ? 'EN_ATENCION' : 'LLAMADO'} />
+                <StatusBadge status={currentTicket.status} />
               )}
             />
 
@@ -277,16 +278,10 @@ export const ModuloOperador: React.FC = () => {
                       <div className="ticket-code text-5xl text-primary-900">
                         {currentTicket.ticketCode}
                       </div>
-                      {currentTicket.patientName && (
-                        <div className="flex items-center gap-1.5 mt-2 text-surface-700">
-                          <User size={14} className="text-surface-400" />
-                          <span className="text-sm font-medium">{currentTicket.patientName}</span>
-                        </div>
-                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs font-semibold text-surface-500 mb-1">Prioridad</p>
-                      <PriorityBadge priority={currentTicket.priorityLevel === 'URGENT' ? 'URGENTE' : currentTicket.priorityLevel === 'PREFERENTIAL' ? 'PREFERENCIAL' : 'NORMAL'} size="md" />
+                      <PriorityBadge priority={currentTicket.priorityLevel} size="md" />
                       <p className="text-xs text-surface-400 mt-1 font-mono">{currentTicket.priorityPoints} pts</p>
                     </div>
                   </div>
@@ -421,9 +416,6 @@ export const ModuloOperador: React.FC = () => {
                       </span>
                       <div>
                         <p className="ticket-code text-base text-surface-900">{item.ticketCode}</p>
-                        {item.patientName && (
-                          <p className="text-xs text-surface-400 truncate max-w-[120px]">{item.patientName}</p>
-                        )}
                       </div>
                     </div>
                     <div className="text-right shrink-0">

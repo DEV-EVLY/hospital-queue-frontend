@@ -3,8 +3,25 @@ import { Download } from 'lucide-react';
 import { Card, CardHeader, CardFooter, Badge, Button, Spinner } from '../../ui';
 import { DatePicker } from '../../ui';
 import { Select } from '../../ui';
-import { reportsApi, medicalServicesApi } from '../../../services/api';
+import type { SelectOption } from '../../ui';
+import { reportsApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
 import { TH, TD, STATUS_LABELS, CHANNEL_LABELS, fmtSeconds } from './_shared';
+import type { MedicalService, TicketReportRow, PriorityLevel, IssuanceChannel, ReportFilterParams } from '../../../types/api';
+
+const PRIORITY_OPTIONS: SelectOption<PriorityLevel | ''>[] = [
+  { value: '', label: 'Todas' },
+  { value: 'URGENT', label: 'Urgente' },
+  { value: 'PREFERENTIAL', label: 'Preferencial' },
+  { value: 'NORMAL', label: 'Normal' },
+];
+
+const CHANNEL_OPTIONS: SelectOption<IssuanceChannel | ''>[] = [
+  { value: '', label: 'Todos los canales' },
+  { value: 'KIOSK', label: 'Kiosko' },
+  { value: 'OPERATOR', label: 'Operador' },
+  { value: 'WEB', label: 'Web' },
+  { value: 'HIS_AUTO', label: 'HIS Automático' },
+];
 
 // Local calendar day (toISOString would give the UTC day, wrong after 19:00 in Lima)
 const today = () => {
@@ -24,21 +41,21 @@ const validateRange = (from: string, to: string): string | null => {
 };
 
 export const ReportesTab: React.FC = () => {
-  const [services,     setServices]     = useState<any[]>([]);
+  const [services,     setServices]     = useState<MedicalService[]>([]);
   const [fechaInicio,  setFechaInicio]  = useState(today());
   const [fechaFin,     setFechaFin]     = useState(today());
   const [servicio,     setServicio]     = useState('');
-  const [prioridad,    setPrioridad]    = useState('');
-  const [canal,        setCanal]        = useState('');
-  const [rows,         setRows]         = useState<any[]>([]);
+  const [prioridad,    setPrioridad]    = useState<PriorityLevel | ''>('');
+  const [canal,        setCanal]        = useState<IssuanceChannel | ''>('');
+  const [rows,         setRows]         = useState<TicketReportRow[]>([]);
   const [searched,     setSearched]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [queryError,   setQueryError]   = useState<string | null>(null);
 
   useEffect(() => {
     medicalServicesApi.list()
-      .then(s => setServices(s as any[]))
-      .catch((e: any) => setQueryError(`Error al cargar servicios: ${e.message}`));
+      .then(setServices)
+      .catch((e: unknown) => setQueryError(`Error al cargar servicios: ${getErrorMessage(e)}`));
   }, []);
 
   const serviceOptions = [
@@ -46,21 +63,25 @@ export const ReportesTab: React.FC = () => {
     ...services.map(s => ({ value: s.id, label: s.name })),
   ];
 
+  const buildParams = (): ReportFilterParams => ({
+    startDate: fechaInicio,
+    endDate: fechaFin,
+    ...(servicio  ? { serviceId:     servicio  } : {}),
+    ...(prioridad ? { priorityLevel: prioridad } : {}),
+    ...(canal     ? { channel:       canal     } : {}),
+  });
+
   const runQuery = async () => {
     const invalid = validateRange(fechaInicio, fechaFin);
     if (invalid) { setQueryError(invalid); return; }
     setLoading(true);
     setQueryError(null);
     try {
-      const params: Record<string, string> = { startDate: fechaInicio, endDate: fechaFin, format: 'json' };
-      if (servicio)  params.serviceId     = servicio;
-      if (prioridad) params.priorityLevel = prioridad;
-      if (canal)     params.channel       = canal;
-      const result = await reportsApi.export(params) as any[];
+      const result = await reportsApi.export(buildParams());
       setRows(Array.isArray(result) ? result : []);
       setSearched(true);
-    } catch (e: any) {
-      setQueryError(e.message || 'Error al generar el reporte. Intenta de nuevo.');
+    } catch (e: unknown) {
+      setQueryError(getErrorMessage(e) || 'Error al generar el reporte. Intenta de nuevo.');
     } finally { setLoading(false); }
   };
 
@@ -70,14 +91,9 @@ export const ReportesTab: React.FC = () => {
     setLoading(true);
     setQueryError(null);
     try {
-      await reportsApi.downloadCsv({
-        startDate: fechaInicio, endDate: fechaFin,
-        ...(servicio  ? { serviceId:     servicio  } : {}),
-        ...(prioridad ? { priorityLevel: prioridad } : {}),
-        ...(canal     ? { channel:       canal     } : {}),
-      });
-    } catch (e: any) {
-      setQueryError(e.message || 'Error al exportar el CSV.');
+      await reportsApi.downloadCsv(buildParams());
+    } catch (e: unknown) {
+      setQueryError(getErrorMessage(e) || 'Error al exportar el CSV.');
     } finally { setLoading(false); }
   };
 
@@ -111,25 +127,14 @@ export const ReportesTab: React.FC = () => {
             label="Prioridad"
             value={prioridad}
             onChange={setPrioridad}
-            options={[
-              { value: '', label: 'Todas' },
-              { value: 'URGENT', label: 'Urgente' },
-              { value: 'PREFERENTIAL', label: 'Preferencial' },
-              { value: 'NORMAL', label: 'Normal' },
-            ]}
+            options={PRIORITY_OPTIONS}
             fullWidth
           />
           <Select
             label="Canal"
             value={canal}
             onChange={setCanal}
-            options={[
-              { value: '', label: 'Todos los canales' },
-              { value: 'KIOSK', label: 'Kiosko' },
-              { value: 'OPERATOR', label: 'Operador' },
-              { value: 'WEB', label: 'Web' },
-              { value: 'HIS_AUTO', label: 'HIS Automático' },
-            ]}
+            options={CHANNEL_OPTIONS}
             fullWidth
           />
         </div>

@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Download, AlertTriangle } from 'lucide-react';
 import { Card, Button } from '../../ui';
-import { circuitBreakerApi } from '../../../services/api';
+import { circuitBreakerApi, getErrorMessage } from '../../../services/api';
 import { FormError } from './_shared';
-import { CircuitBreakerStatus } from '../../../types';
+import type { CircuitBreakerStatus } from '../../../types/api';
 
 export const ResilienciaTab: React.FC = () => {
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus | null>(null);
+  const [pending,  setPending]  = useState<number | null>(null);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
   const load = async () => {
-    try { setCbStatus(await circuitBreakerApi.status() as CircuitBreakerStatus); } catch { /* ok */ }
+    try { setCbStatus(await circuitBreakerApi.status()); } catch { /* ok */ }
+    // Cola offline: solo ADMIN puede consultarla; si falla, se muestra "—"
+    try {
+      const items = await circuitBreakerApi.offlineItems();
+      setPending(items.filter(i => i.status === 'PENDING' || i.status === 'RETRYING').length);
+    } catch { setPending(null); }
   };
 
   useEffect(() => {
@@ -23,16 +29,16 @@ export const ResilienciaTab: React.FC = () => {
   const handleSyncNow = async () => {
     setLoading(true);
     setError(null);
-    try { await circuitBreakerApi.syncNow(); load(); } catch (e: any) {
-      setError(`Error al sincronizar: ${e.message}`);
+    try { await circuitBreakerApi.syncNow(); load(); } catch (e: unknown) {
+      setError(`Error al sincronizar: ${getErrorMessage(e)}`);
     } finally { setLoading(false); }
   };
 
   const handleDownload = async () => {
     setLoading(true);
     setError(null);
-    try { await circuitBreakerApi.downloadOfflineCsv(); } catch (e: any) {
-      setError(`Error al descargar: ${e.message}`);
+    try { await circuitBreakerApi.downloadOfflineCsv(); } catch (e: unknown) {
+      setError(`Error al descargar: ${getErrorMessage(e)}`);
     } finally { setLoading(false); }
   };
 
@@ -84,22 +90,20 @@ export const ResilienciaTab: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-surface-500">Fallas actuales:</span>
-              <span className={`font-semibold ${cbStatus.failures > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                {cbStatus.failures}
+              <span className={`font-semibold ${cbStatus.failureCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {cbStatus.failureCount}
               </span>
             </div>
-            {cbStatus.lastFailureTime && (
+            {cbStatus.openUntil && (
               <div className="flex justify-between">
-                <span className="text-surface-500">Última falla:</span>
-                <span className="text-surface-700 text-xs">{cbStatus.lastFailureTime}</span>
+                <span className="text-surface-500">Abierto hasta:</span>
+                <span className="text-surface-700 text-xs">{new Date(cbStatus.openUntil).toLocaleString('es-PE')}</span>
               </div>
             )}
-            {cbStatus.lastSuccessTime && (
-              <div className="flex justify-between">
-                <span className="text-surface-500">Último éxito:</span>
-                <span className="text-surface-700 text-xs">{cbStatus.lastSuccessTime}</span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span className="text-surface-500">Reintento tras:</span>
+              <span className="text-surface-700 text-xs">{Math.round(cbStatus.resetTimeoutMs / 1000)} s</span>
+            </div>
           </div>
         </Card>
 
@@ -108,7 +112,7 @@ export const ResilienciaTab: React.FC = () => {
             Cola Offline Pendiente
           </p>
           <div className="text-4xl font-bold font-mono text-primary-700 mb-1">
-            {cbStatus.pendingOfflineCount}
+            {pending ?? '—'}
             <span className="text-lg font-normal text-surface-500 ml-2">registros</span>
           </div>
           <p className="text-sm text-surface-500 mb-6">

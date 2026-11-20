@@ -1,6 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
-import type { EstadoTurno, NivelPrioridad } from '../../types';
+import type { TicketStatus, PriorityLevel } from '../../types/api';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'purple' | 'gray';
 type BadgeSize    = 'sm' | 'md';
@@ -47,30 +47,30 @@ export const Badge = ({ children, variant = 'default', size = 'sm', dot, classNa
 
 // ─── Semantic badge for ticket status ────────────────────────────────────────
 
-const STATUS_CONFIG: Record<EstadoTurno, { label: string; variant: BadgeVariant }> = {
-  EN_ESPERA:   { label: 'En espera',   variant: 'warning' },
-  LLAMADO:     { label: 'Llamado',     variant: 'primary' },
-  EN_ATENCION: { label: 'En atención', variant: 'success' },
-  ATENDIDO:    { label: 'Atendido',    variant: 'gray'    },
-  NO_ATENDIDO: { label: 'Ausente',     variant: 'danger'  },
-  DERIVADO:    { label: 'Derivado',    variant: 'purple'  },
-  CANCELADO:   { label: 'Cancelado',   variant: 'gray'    },
+const STATUS_CONFIG: Record<TicketStatus, { label: string; variant: BadgeVariant }> = {
+  WAITING:      { label: 'En espera',   variant: 'warning' },
+  CALLED:       { label: 'Llamado',     variant: 'primary' },
+  IN_ATTENTION: { label: 'En atención', variant: 'success' },
+  ATTENDED:     { label: 'Atendido',    variant: 'gray'    },
+  NOT_ATTENDED: { label: 'Ausente',     variant: 'danger'  },
+  REFERRED:     { label: 'Derivado',    variant: 'purple'  },
+  CANCELLED:    { label: 'Cancelado',   variant: 'gray'    },
 };
 
-export const StatusBadge = ({ status, size }: { status: EstadoTurno; size?: BadgeSize }) => {
+export const StatusBadge = ({ status, size }: { status: TicketStatus; size?: BadgeSize }) => {
   const cfg = STATUS_CONFIG[status] ?? { label: status, variant: 'default' as BadgeVariant };
   return <Badge variant={cfg.variant} size={size} dot>{cfg.label}</Badge>;
 };
 
 // ─── Semantic badge for priority ─────────────────────────────────────────────
 
-const PRIORITY_CONFIG: Record<NivelPrioridad, { label: string; variant: BadgeVariant }> = {
-  URGENTE:      { label: 'Urgente',      variant: 'danger'  },
-  PREFERENCIAL: { label: 'Preferencial', variant: 'warning' },
+const PRIORITY_CONFIG: Record<PriorityLevel, { label: string; variant: BadgeVariant }> = {
+  URGENT:       { label: 'Urgente',      variant: 'danger'  },
+  PREFERENTIAL: { label: 'Preferencial', variant: 'warning' },
   NORMAL:       { label: 'Normal',       variant: 'primary' },
 };
 
-export const PriorityBadge = ({ priority, size }: { priority: NivelPrioridad; size?: BadgeSize }) => {
+export const PriorityBadge = ({ priority, size }: { priority: PriorityLevel; size?: BadgeSize }) => {
   const cfg = PRIORITY_CONFIG[priority] ?? { label: priority, variant: 'default' as BadgeVariant };
   return <Badge variant={cfg.variant} size={size}>{cfg.label}</Badge>;
 };

@@ -3,6 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ticketsApi, medicalServicesApi, consultingRoomsApi } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { soundService } from '../../services/audio';
+import type { PriorityLevel, Ticket } from '../../types/api';
+import type {
+  TicketCalledEvent, TicketDispensedEvent, AttentionCompletedEvent, ConnectionStatusEvent,
+} from '../../types/events';
 import { Activity, Volume2, VolumeX, Wifi, WifiOff, MapPin, X, Clock } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -22,7 +26,7 @@ interface WaitingTicket {
   id: string;
   ticketCode: string;
   serviceName: string;
-  priorityLevel: string;
+  priorityLevel: PriorityLevel;
   priorityPoints: number;
   issuedAt: string;
 }
@@ -36,28 +40,31 @@ export interface PantallaCarteleraProps {
 // ---------------------------------------------------------------------------
 
 const TICKER_MSG =
-  (import.meta as any).env?.VITE_TICKER_MSG ??
+  import.meta.env.VITE_TICKER_MSG ??
   'Hospital Nacional · Sistema de Gestión de Colas · Atiéndase con su número de turno · Conserve su ticket y permanezca atento a la pantalla';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Lo mínimo que necesitamos de un ticket llamado: viene del API (Ticket) o del evento SSE. */
+type CalledSource = Pick<TicketCalledEvent, 'ticketCode' | 'medicalServiceId'> & {
+  id?: string;
+  ticketId?: string;
+  consultingRoomId: string | null;
+  calledAt: string | null;
+};
+
 const mapEvent = (
-  payload: any,
+  src: CalledSource,
   serviceMap: Map<string, string>,
   roomMap: Map<string, string>,
 ): CalledTicket => ({
-  id:          payload.ticketId ?? payload.id ?? String(Date.now()),
-  ticketCode:  payload.ticketCode  ?? payload.ticket_codigo  ?? '—',
-  serviceName: payload.serviceName ?? payload.medicalServiceName ?? payload.medicalServiceCode
-               ?? payload.servicio_nombre
-               ?? serviceMap.get(payload.medicalServiceId) ?? payload.medicalServiceId ?? '—',
-  roomName:    payload.roomName ?? payload.consultingRoomName ?? payload.consultingRoomCode
-               ?? payload.modulo_nombre
-               ?? roomMap.get(payload.consultingRoomId) ?? payload.consultingRoomId ?? '—',
-  location:    payload.location    ?? payload.ubicacion,
-  calledAt:    payload.calledAt    ?? payload.timestamp_llamado ?? new Date().toISOString(),
+  id:          src.ticketId ?? src.id ?? String(Date.now()),
+  ticketCode:  src.ticketCode || '—',
+  serviceName: serviceMap.get(src.medicalServiceId) ?? src.medicalServiceId ?? '—',
+  roomName:    (src.consultingRoomId ? roomMap.get(src.consultingRoomId) ?? src.consultingRoomId : null) ?? '—',
+  calledAt:    src.calledAt ?? new Date().toISOString(),
 });
 
 const getZoneFilter = (): string | null => {
@@ -88,16 +95,23 @@ const getSpanishDate = (): string => {
   });
 };
 
-const mapWaiting = (t: any, serviceMap: Map<string, string>): WaitingTicket => ({
-  id:             t.id ?? t.ticketId ?? String(Date.now()),
-  ticketCode:     t.ticketCode ?? '—',
-  serviceName:    t.serviceName ?? serviceMap.get(t.medicalServiceId) ?? t.medicalServiceId ?? '—',
+/** Ticket del API o evento TICKET_DISPENSED */
+type WaitingSource = Pick<TicketDispensedEvent, 'ticketCode' | 'medicalServiceId' | 'priorityLevel' | 'priorityPoints'> & {
+  id?: string;
+  ticketId?: string;
+  issuedAt: string;
+};
+
+const mapWaiting = (t: WaitingSource, serviceMap: Map<string, string>): WaitingTicket => ({
+  id:             t.ticketId ?? t.id ?? String(Date.now()),
+  ticketCode:     t.ticketCode || '—',
+  serviceName:    serviceMap.get(t.medicalServiceId) ?? t.medicalServiceId ?? '—',
   priorityLevel:  t.priorityLevel ?? 'NORMAL',
   priorityPoints: t.priorityPoints ?? 0,
-  issuedAt:       t.issuedAt ?? t.timestamp ?? new Date().toISOString(),
+  issuedAt:       t.issuedAt ?? new Date().toISOString(),
 });
 
-const PRIORITY_COLOR: Record<string, string> = {
+const PRIORITY_COLOR: Record<PriorityLevel, string> = {
   URGENT:       'text-rose-400   border-rose-500/40   bg-rose-950/40',
   PREFERENTIAL: 'text-amber-400  border-amber-500/40  bg-amber-950/40',
   NORMAL:       'text-slate-400  border-slate-700/40  bg-slate-900/40',
@@ -138,18 +152,18 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
   useEffect(() => {
     const load = async () => {
       try {
-        const svcs = await medicalServicesApi.list() as any[];
-        svcs.forEach(s => serviceMapRef.current.set(s.id, s.name ?? s.serviceName ?? s.code));
+        const svcs = await medicalServicesApi.list();
+        svcs.forEach(s => serviceMapRef.current.set(s.id, s.name));
       } catch { /* ok */ }
 
       try {
-        const rooms = await consultingRoomsApi.list() as any[];
-        rooms.forEach(r => roomMapRef.current.set(r.id, r.name ?? r.roomName ?? r.code));
+        const rooms = await consultingRoomsApi.list();
+        rooms.forEach(r => roomMapRef.current.set(r.id, r.name));
       } catch { /* ok */ }
 
       try {
-        const data = await ticketsApi.lastCalled(6) as any[];
-        if (Array.isArray(data) && data.length > 0) {
+        const data: Ticket[] = await ticketsApi.lastCalled(6);
+        if (data.length > 0) {
           const mapped = data
             .map(t => mapEvent(t, serviceMapRef.current, roomMapRef.current))
             .filter(t => matchesZone(t, zoneFilter));
@@ -161,7 +175,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       } catch { /* ok */ }
 
       try {
-        const waiting = await ticketsApi.waitingQueue(20) as any[];
+        const waiting: Ticket[] = await ticketsApi.waitingQueue(20);
         if (Array.isArray(waiting)) {
           setWaitingQueue(waiting.map(t => mapWaiting(t, serviceMapRef.current)));
         }
@@ -174,7 +188,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
   useEffect(() => {
     const es = getSocket('pantalla');
 
-    const handleTicket = (payload: any) => {
+    const handleTicket = (payload: TicketCalledEvent) => {
       const ticket = mapEvent(payload, serviceMapRef.current, roomMapRef.current);
       if (!matchesZone(ticket, zoneFilter)) return;
 
@@ -193,8 +207,8 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       }
     };
 
-    const handleCompleted = (payload: any) => {
-      const completedId = payload?.ticketId ?? payload?.id;
+    const handleCompleted = (payload: AttentionCompletedEvent) => {
+      const completedId = payload.ticketId;
       if (!completedId) return;
       setCurrent(prev => {
         if (prev?.id === completedId) return null;
@@ -204,7 +218,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       setWaitingQueue(prev => prev.filter(x => x.id !== completedId));
     };
 
-    const handleDispensed = (payload: any) => {
+    const handleDispensed = (payload: TicketDispensedEvent) => {
       const wt = mapWaiting(payload, serviceMapRef.current);
       setWaitingQueue(prev => {
         if (prev.some(x => x.id === wt.id)) return prev;
@@ -214,14 +228,14 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       });
     };
 
-    const handleCalledFromQueue = (payload: any) => {
-      const calledId = payload?.ticketId ?? payload?.id;
+    const handleCalledFromQueue = (payload: TicketCalledEvent) => {
+      const calledId = payload.ticketId;
       if (!calledId) return;
       setWaitingQueue(prev => prev.filter(x => x.id !== calledId));
     };
 
-    const handleConnection = (data: unknown) => {
-      setSseConnected((data as { connected: boolean }).connected);
+    const handleConnection = (data: ConnectionStatusEvent) => {
+      setSseConnected(data.connected);
     };
 
     es.on('TICKET_DISPENSED',    handleDispensed);

@@ -15,7 +15,9 @@ function parseToken(token: string): TokenPayload | null {
   }
 }
 
-export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'DOCTOR' | 'OPERATOR' | 'KIOSK';
+import type { Role } from '../types/api';
+
+export type UserRole = Role;
 
 const VALID_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'DOCTOR', 'OPERATOR', 'KIOSK'];
 

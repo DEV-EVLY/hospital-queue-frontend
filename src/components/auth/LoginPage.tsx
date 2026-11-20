@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Lock, User, AlertCircle, Activity } from 'lucide-react';
 import { Button, Input, Card } from '../ui';
-import { authApi } from '../../services/api';
+import { authApi, getErrorMessage, ApiError } from '../../services/api';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -23,13 +23,18 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await authApi.login({ username: username.trim(), password }) as { token: string; userId?: string };
+      const res = await authApi.login({ username: username.trim(), password });
       if (!res.token) throw new Error('Respuesta inválida del servidor');
       localStorage.setItem('token', res.token);
-      if (res.userId) localStorage.setItem('userId', res.userId);
+      localStorage.setItem('userId', res.userId);
       onLoginSuccess();
     } catch (err: unknown) {
-      setError((err as Error).message || 'Credenciales incorrectas. Verifique usuario y contraseña.');
+      // El backend responde 401 sin cuerpo cuando las credenciales son inválidas
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? 'Credenciales incorrectas. Verifique usuario y contraseña.'
+          : getErrorMessage(err, 'No se pudo iniciar sesión.')
+      );
     } finally {
       setLoading(false);
     }

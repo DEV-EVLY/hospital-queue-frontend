@@ -3,13 +3,9 @@ import {
   Plus, RefreshCw, Edit2, Trash2, Save, ChevronRight, ChevronDown, FolderTree, FolderPlus, UserPlus, UserMinus,
 } from 'lucide-react';
 import { Card, CardHeader, Badge, Button, Input, Modal, Select } from '../../ui';
-import { userGroupsApi, usersApi } from '../../../services/api';
+import { userGroupsApi, usersApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
-
-interface Group {
-  id: string; code: string; name: string; description: string | null;
-  parentId: string | null; active: boolean; memberCount: number;
-}
+import type { UserGroup as Group, User } from '../../../types/api';
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', DOCTOR: 'Médico', OPERATOR: 'Operador', KIOSK: 'Kiosko',
@@ -19,8 +15,8 @@ const BLANK_FORM = { code: '', name: '', description: '', parentId: '' };
 
 export const GruposTab: React.FC = () => {
   const [groups,     setGroups]     = useState<Group[]>([]);
-  const [allUsers,   setAllUsers]   = useState<any[]>([]);
-  const [members,    setMembers]    = useState<any[]>([]);
+  const [allUsers,   setAllUsers]   = useState<User[]>([]);
+  const [members,    setMembers]    = useState<User[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed,  setCollapsed]  = useState<Set<string>>(new Set());
   const [error,      setError]      = useState<string | null>(null);
@@ -37,19 +33,19 @@ export const GruposTab: React.FC = () => {
   // ── data ───────────────────────────────────────────────────────────────────
 
   const loadGroups = async () => {
-    try { setGroups(await userGroupsApi.list() as Group[]); }
-    catch (e: any) { setError(`Error al cargar grupos: ${e.message}`); }
+    try { setGroups(await userGroupsApi.list()); }
+    catch (e: unknown) { setError(`Error al cargar grupos: ${getErrorMessage(e)}`); }
   };
 
   const loadMembers = async (id: string) => {
-    try { setMembers(await userGroupsApi.members(id) as any[]); }
-    catch (e: any) { setError(`Error al cargar miembros: ${e.message}`); }
+    try { setMembers(await userGroupsApi.members(id)); }
+    catch (e: unknown) { setError(`Error al cargar miembros: ${getErrorMessage(e)}`); }
   };
 
   useEffect(() => {
     loadGroups();
-    usersApi.list(0, 500).then((d: any) => setAllUsers(d.content ?? []))
-      .catch((e: any) => setError(`Error al cargar usuarios: ${e.message}`));
+    usersApi.list(0, 500).then(d => setAllUsers(d.content))
+      .catch((e: unknown) => setError(`Error al cargar usuarios: ${getErrorMessage(e)}`));
   }, []);
 
   useEffect(() => {
@@ -127,12 +123,12 @@ export const GruposTab: React.FC = () => {
       setShowModal(false);
       if (payload.parentId) setCollapsed(prev => { const n = new Set(prev); n.delete(payload.parentId!); return n; });
       await loadGroups();
-    } catch (e: any) { setModalErr(e.message); }
+    } catch (e: unknown) { setModalErr(getErrorMessage(e)); }
   };
 
   const toggleGroup = async (g: Group) => {
     try { await userGroupsApi.toggleActive(g.id); await loadGroups(); }
-    catch (e: any) { setError(e.message); }
+    catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const deleteGroup = async (g: Group) => {
@@ -141,7 +137,7 @@ export const GruposTab: React.FC = () => {
       await userGroupsApi.remove(g.id);
       if (selectedId === g.id) setSelectedId(null);
       await loadGroups();
-    } catch (e: any) { setError(e.message?.includes('subgroups') ? 'El grupo tiene subgrupos. Muévelos o elimínalos primero.' : e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e).includes('subgroups') ? 'El grupo tiene subgrupos. Muévelos o elimínalos primero.' : getErrorMessage(e)); }
   };
 
   // ── member actions ─────────────────────────────────────────────────────────
@@ -152,7 +148,7 @@ export const GruposTab: React.FC = () => {
       await userGroupsApi.addMember(selectedId, userToAdd);
       setUserToAdd('');
       await Promise.all([loadMembers(selectedId), loadGroups()]);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const removeMember = async (userId: string) => {
@@ -160,7 +156,7 @@ export const GruposTab: React.FC = () => {
     try {
       await userGroupsApi.removeMember(selectedId, userId);
       await Promise.all([loadMembers(selectedId), loadGroups()]);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const memberIds = new Set(members.map(m => m.id));
@@ -318,7 +314,7 @@ export const GruposTab: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Código *" placeholder="PED" maxLength={30} disabled={!!editingId}
             value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} fullWidth />
-          <Input label="Nombre *" placeholder="Pediatría"
+          <Input label="Nombre *" maxLength={100} placeholder="Pediatría"
             value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} fullWidth />
           <div className="sm:col-span-2">
             <Select label="Grupo padre" value={form.parentId}

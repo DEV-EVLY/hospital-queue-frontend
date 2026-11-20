@@ -2,9 +2,13 @@
 // Native EventSource does not support Authorization headers, so the token is
 // sent via ?token= and the notification-service /ws/** path is public.
 
+import type { RealtimeEventMap, RealtimeEventName } from '../types/events';
+
+type Listener = (data: unknown) => void;
+
 export class HospitalEventSource {
   private eventSources: Map<string, EventSource> = new Map();
-  private listeners: Map<string, ((data: unknown) => void)[]> = new Map();
+  private listeners: Map<string, Listener[]> = new Map();
 
   connect(room: string = 'all') {
     if (this.eventSources.has(room)) return;
@@ -18,14 +22,13 @@ export class HospitalEventSource {
 
     es.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data as string);
+        const data = JSON.parse(event.data as string) as { eventType?: string; payload?: unknown };
         // Unwrap the NotificationEvent wrapper — emit the inner payload so
         // handlers receive ticketCode, ticketId etc. directly.
         const inner = (data.payload != null && typeof data.payload === 'object')
           ? data.payload
           : data;
         this.emit(data.eventType ?? 'message', inner);
-        this.emit('*', inner);
       } catch {
         // ignore malformed frames
       }
@@ -47,14 +50,15 @@ export class HospitalEventSource {
     this.eventSources.set(room, es);
   }
 
-  on(event: string, callback: (data: unknown) => void) {
+  /** El tipo del payload depende del evento (ver RealtimeEventMap). */
+  on<E extends RealtimeEventName>(event: E, callback: (data: RealtimeEventMap[E]) => void) {
     if (!this.listeners.has(event)) this.listeners.set(event, []);
-    this.listeners.get(event)!.push(callback);
+    this.listeners.get(event)!.push(callback as Listener);
   }
 
-  off(event: string, callback: (data: unknown) => void) {
+  off<E extends RealtimeEventName>(event: E, callback: (data: RealtimeEventMap[E]) => void) {
     const cbs = this.listeners.get(event) ?? [];
-    this.listeners.set(event, cbs.filter(cb => cb !== callback));
+    this.listeners.set(event, cbs.filter(cb => cb !== (callback as Listener)));
   }
 
   private emit(event: string, data: unknown) {
@@ -74,7 +78,6 @@ export class HospitalEventSource {
     this.eventSources.delete(room);
   }
 
-  emit_local(event: string, data: unknown) { this.emit(event, data); }
 }
 
 export const hospitalEventSource = new HospitalEventSource();

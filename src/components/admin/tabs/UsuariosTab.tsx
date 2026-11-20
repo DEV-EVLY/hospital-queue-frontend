@@ -2,13 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, RefreshCw, Edit2, Save } from 'lucide-react';
 import { Card, Badge, Button, Input, Modal, Pagination } from '../../ui';
 import { Select } from '../../ui';
-import { usersApi, userGroupsApi } from '../../../services/api';
+import type { SelectOption } from '../../ui';
+import { usersApi, userGroupsApi, getErrorMessage } from '../../../services/api';
 import { getUserId } from '../../../services/auth';
 import { FormError, TH, TD } from './_shared';
+import type { User, UserGroup, UserGroupMembership, Role, CreateUserRequest } from '../../../types/api';
 
-const BLANK_USER = { username: '', fullName: '', password: '', role: 'OPERATOR' };
+const BLANK_USER: CreateUserRequest = { username: '', fullName: '', password: '', role: 'OPERATOR' };
 
-const ROLE_OPTIONS = [
+const ROLE_OPTIONS: SelectOption<Role>[] = [
   { value: 'ADMIN',      label: 'Administrador' },
   { value: 'SUPERVISOR', label: 'Supervisor' },
   { value: 'DOCTOR',     label: 'Médico' },
@@ -16,7 +18,7 @@ const ROLE_OPTIONS = [
   { value: 'KIOSK',      label: 'Kiosko' },
 ];
 
-const roleBadge = (role: string) => {
+const roleBadge = (role: Role) => {
   switch (role) {
     case 'ADMIN':      return <Badge variant="purple">Administrador</Badge>;
     case 'SUPERVISOR': return <Badge variant="warning">Supervisor</Badge>;
@@ -29,44 +31,44 @@ const roleBadge = (role: string) => {
 const PAGE_SIZE = 20;
 
 export const UsuariosTab: React.FC = () => {
-  const [userList,     setUserList]     = useState<any[]>([]);
+  const [userList,     setUserList]     = useState<User[]>([]);
   const [page,         setPage]         = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages,   setTotalPages]   = useState(0);
   const [showNewUser,  setShowNewUser]  = useState(false);
-  const [newUser,      setNewUser]      = useState({ ...BLANK_USER });
+  const [newUser,      setNewUser]      = useState<CreateUserRequest>({ ...BLANK_USER });
   const [editingId,    setEditingId]    = useState<string | null>(null);
-  const [editingUser,  setEditingUser]  = useState<any>(null);
+  const [editingUser,  setEditingUser]  = useState<Pick<User, 'fullName' | 'role'> | null>(null);
   const [error,        setError]        = useState<string | null>(null);
-  const [groups,       setGroups]       = useState<any[]>([]);
-  const [memberships,  setMemberships]  = useState<{ groupId: string; userId: string }[]>([]);
+  const [groups,       setGroups]       = useState<UserGroup[]>([]);
+  const [memberships,  setMemberships]  = useState<UserGroupMembership[]>([]);
   const [filterGroup,  setFilterGroup]  = useState('');
 
   const currentUserId = getUserId();
 
   const load = async (p = page) => {
     try {
-      const data = await usersApi.list(p, PAGE_SIZE, filterGroup || undefined) as any;
+      const data = await usersApi.list(p, PAGE_SIZE, filterGroup || undefined);
       setUserList(data.content ?? []);
       setTotalElements(data.totalElements ?? 0);
       setTotalPages(data.totalPages ?? 0);
-    } catch (e: any) {
-      setError(`Error al cargar usuarios: ${e.message}`);
+    } catch (e: unknown) {
+      setError(`Error al cargar usuarios: ${getErrorMessage(e)}`);
     }
   };
 
   const loadGroups = async () => {
     try {
       const [g, m] = await Promise.all([userGroupsApi.list(), userGroupsApi.memberships()]);
-      setGroups(g as any[]);
-      setMemberships(m as any[]);
+      setGroups(g);
+      setMemberships(m);
     } catch { /* groups are optional for this tab */ }
   };
 
   useEffect(() => { load(page); }, [page, filterGroup]);
   useEffect(() => { loadGroups(); }, []);
 
-  const groupName = useMemo(() => new Map(groups.map((g: any) => [g.id, g.name])), [groups]);
+  const groupName = useMemo(() => new Map(groups.map(g => [g.id, g.name] as const)), [groups]);
   const groupsOfUser = useMemo(() => {
     const map = new Map<string, string[]>();
     memberships.forEach(m => {
@@ -78,8 +80,8 @@ export const UsuariosTab: React.FC = () => {
 
   // Indented tree order for the filter options
   const groupOptions = useMemo(() => {
-    const kids = new Map<string | null, any[]>();
-    groups.forEach((g: any) => kids.set(g.parentId ?? null, [...(kids.get(g.parentId ?? null) ?? []), g]));
+    const kids = new Map<string | null, UserGroup[]>();
+    groups.forEach(g => kids.set(g.parentId ?? null, [...(kids.get(g.parentId ?? null) ?? []), g]));
     const opts: { value: string; label: string }[] = [{ value: '', label: 'Todos los grupos' }];
     const walk = (parent: string | null, depth: number) =>
       (kids.get(parent) ?? []).forEach(g => {
@@ -94,13 +96,14 @@ export const UsuariosTab: React.FC = () => {
     if (!newUser.username || !newUser.fullName || !newUser.password) {
       setError('Usuario, nombre completo y contraseña son obligatorios.'); return;
     }
+    if (newUser.password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres.'); return; }
     setError(null);
     try {
       await usersApi.create(newUser);
       setNewUser({ ...BLANK_USER });
       setShowNewUser(false);
       load(page);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const saveEdit = async () => {
@@ -110,7 +113,7 @@ export const UsuariosTab: React.FC = () => {
       await usersApi.update(editingId!, { fullName: editingUser.fullName, role: editingUser.role });
       setEditingId(null); setEditingUser(null);
       load(page);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const toggleUser = async (id: string) => {
@@ -121,7 +124,7 @@ export const UsuariosTab: React.FC = () => {
     try {
       const updated = await usersApi.toggleActive(id);
       setUserList(prev => prev.map(u => u.id === id ? updated : u));
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   return (
@@ -164,19 +167,19 @@ export const UsuariosTab: React.FC = () => {
             <tbody>
               {userList.map(u => (
                 <tr key={u.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
-                  {editingId === u.id ? (
+                  {editingId === u.id && editingUser ? (
                     <>
                       <TD>
                         <code className="text-xs font-mono text-surface-500">{u.username}</code>
                       </TD>
                       <TD>
                         <Input value={editingUser.fullName}
-                          onChange={e => setEditingUser((p: any) => ({ ...p, fullName: e.target.value }))} fullWidth />
+                          onChange={e => setEditingUser(p => p && { ...p, fullName: e.target.value })} fullWidth />
                       </TD>
                       <TD>
                         <Select
                           value={editingUser.role}
-                          onChange={val => setEditingUser((p: any) => ({ ...p, role: val }))}
+                          onChange={val => setEditingUser(p => p && { ...p, role: val })}
                           options={ROLE_OPTIONS}
                           fullWidth
                         />
@@ -232,7 +235,7 @@ export const UsuariosTab: React.FC = () => {
                       </TD>
                       <TD className="text-right">
                         <button
-                          onClick={() => { setEditingId(u.id); setEditingUser({ ...u }); setError(null); }}
+                          onClick={() => { setEditingId(u.id); setEditingUser({ fullName: u.fullName, role: u.role }); setError(null); }}
                           className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
                         >
                           <Edit2 className="w-4 h-4" />

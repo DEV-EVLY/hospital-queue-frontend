@@ -1,6 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Card } from '../../ui';
+import type { TicketStatus, IssuanceChannel } from '../../../types/api';
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 export const KpiCard: React.FC<{
@@ -45,7 +46,7 @@ export const TD: React.FC<{ children?: React.ReactNode; className?: string }> = 
 );
 
 // ── Shared label maps ─────────────────────────────────────────────────────────
-export const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<TicketStatus, string> = {
   WAITING:      'En Espera',
   CALLED:       'Llamado',
   IN_ATTENTION: 'En Atención',
@@ -55,8 +56,18 @@ export const STATUS_LABELS: Record<string, string> = {
   CANCELLED:    'Cancelado',
 };
 
-export const CHANNEL_LABELS: Record<string, string> = {
+export const CHANNEL_LABELS: Record<IssuanceChannel, string> = {
   KIOSK: 'Kiosko', OPERATOR: 'Operador', WEB: 'Web', HIS_AUTO: 'HIS Automático',
+};
+
+// ── Teléfono: el backend valida [0-9+-]{7,15} (sin espacios) y rechaza cadenas vacías ──
+const PHONE_PATTERN = /^[0-9+-]{7,15}$/;
+/** Quita espacios; devuelve null si queda vacío (el backend espera null, no ''). */
+export const normalizePhone = (raw: string): string | null => raw.replace(/\s/g, '') || null;
+/** Mensaje de error si el teléfono es inválido; null si es válido o está vacío. */
+export const phoneError = (raw: string): string | null => {
+  const p = normalizePhone(raw);
+  return p && !PHONE_PATTERN.test(p) ? 'Teléfono inválido: usa de 7 a 15 caracteres entre números, + o -.' : null;
 };
 
 export const fmtSeconds = (s?: number | null) =>

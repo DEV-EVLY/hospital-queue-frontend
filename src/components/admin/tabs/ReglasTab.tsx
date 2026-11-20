@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, RefreshCw, Edit2, Trash2, Save, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Card, CardHeader, Badge, Button, Input, Modal, Select } from '../../ui';
-import { priorityRulesApi } from '../../../services/api';
+import type { SelectOption } from '../../ui';
+import { priorityRulesApi, getErrorMessage } from '../../../services/api';
 import { FormError } from './_shared';
+import type { PriorityRule, PriorityRuleRequest, RuleCondition, PriorityLevel } from '../../../types/api';
+
+interface RuleForm {
+  name: string; condition: RuleCondition; resultLevel: PriorityLevel;
+  priorityPoints: number; maxWaitMinutes: number; evaluationOrder: number;
+  ageThreshold: number | ''; toleranceWindowMin: number | ''; customConditionExpr: string;
+}
 
 // ── Diccionarios (backend envía códigos en inglés) ───────────────────────────
 
-const CONDITION_LABELS: Record<string, string> = {
+const CONDITION_LABELS: Record<RuleCondition, string> = {
   URGENT_TRIAGE:         'Triaje urgente',
   DISABILITY:            'Discapacidad',
   PREGNANT:              'Gestante',
@@ -16,7 +24,7 @@ const CONDITION_LABELS: Record<string, string> = {
   CUSTOM:                'Personalizada',
 };
 
-const CONDITION_HINTS: Record<string, string> = {
+const CONDITION_HINTS: Record<RuleCondition, string> = {
   URGENT_TRIAGE:         'Paciente clasificado como urgencia en el triaje',
   DISABILITY:            'Paciente con discapacidad declarada',
   PREGNANT:              'Paciente en estado de gestación',
@@ -26,10 +34,10 @@ const CONDITION_HINTS: Record<string, string> = {
   CUSTOM:                'Condición definida mediante una expresión personalizada',
 };
 
-const LEVEL_LABELS: Record<string, string> = {
+const LEVEL_LABELS: Record<PriorityLevel, string> = {
   URGENT: 'Urgente', PREFERENTIAL: 'Preferencial', NORMAL: 'Normal',
 };
-const LEVEL_VARIANT: Record<string, 'danger' | 'warning' | 'primary'> = {
+const LEVEL_VARIANT: Record<PriorityLevel, 'danger' | 'warning' | 'primary'> = {
   URGENT: 'danger', PREFERENTIAL: 'warning', NORMAL: 'primary',
 };
 
@@ -44,43 +52,44 @@ const SEED_NAME_ES: Record<string, string> = {
 };
 const ruleName = (n: string) => SEED_NAME_ES[n] ?? n;
 
-const CONDITION_OPTIONS = Object.entries(CONDITION_LABELS).map(([value, label]) => ({ value, label }));
-const LEVEL_OPTIONS = [
+const CONDITION_OPTIONS: SelectOption<RuleCondition>[] =
+  (Object.keys(CONDITION_LABELS) as RuleCondition[]).map(value => ({ value, label: CONDITION_LABELS[value] }));
+const LEVEL_OPTIONS: SelectOption<PriorityLevel>[] = [
   { value: 'URGENT',       label: 'Urgente' },
   { value: 'PREFERENTIAL', label: 'Preferencial' },
   { value: 'NORMAL',       label: 'Normal' },
 ];
 
-const BLANK_RULE = {
+const BLANK_RULE: RuleForm = {
   name: '', condition: 'ELDERLY', resultLevel: 'PREFERENTIAL',
   priorityPoints: 10, maxWaitMinutes: 60, evaluationOrder: 0,
-  ageThreshold: '' as number | '', toleranceWindowMin: '' as number | '', customConditionExpr: '',
+  ageThreshold: '', toleranceWindowMin: '', customConditionExpr: '',
 };
 
 const numOrNull = (v: number | '') => (v === '' ? null : Number(v));
 
 export const ReglasTab: React.FC = () => {
-  const [rules,     setRules]     = useState<any[]>([]);
+  const [rules,     setRules]     = useState<PriorityRule[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form,      setForm]      = useState<any>({ ...BLANK_RULE });
+  const [form,      setForm]      = useState<RuleForm>({ ...BLANK_RULE });
   const [error,     setError]     = useState<string | null>(null);
 
   const load = async () => {
-    try { setRules(await priorityRulesApi.list() as any[]); }
-    catch (e: any) { setError(`Error al cargar reglas: ${e.message}`); }
+    try { setRules(await priorityRulesApi.list()); }
+    catch (e: unknown) { setError(`Error al cargar reglas: ${getErrorMessage(e)}`); }
   };
 
   useEffect(() => { load(); }, []);
 
-  const set = (patch: Record<string, any>) => setForm((f: any) => ({ ...f, ...patch }));
+  const set = (patch: Partial<RuleForm>) => setForm(f => ({ ...f, ...patch }));
 
   const openCreate = () => {
     setForm({ ...BLANK_RULE, evaluationOrder: rules.length + 1 });
     setEditingId(null); setError(null); setShowModal(true);
   };
 
-  const openEdit = (r: any) => {
+  const openEdit = (r: PriorityRule) => {
     setForm({
       name: ruleName(r.name),
       condition: r.condition,
@@ -104,7 +113,7 @@ export const ReglasTab: React.FC = () => {
     }
     if (form.maxWaitMinutes < 1) { setError('El SLA debe ser de al menos 1 minuto.'); return; }
     setError(null);
-    const payload = {
+    const payload: PriorityRuleRequest = {
       name: form.name.trim(),
       condition: form.condition,
       resultLevel: form.resultLevel,
@@ -126,14 +135,14 @@ export const ReglasTab: React.FC = () => {
         setRules(prev => [...prev, created]);
       }
       setShowModal(false);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   const toggleRule = async (id: string) => {
     try {
       await priorityRulesApi.toggle(id);
       setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
-    } catch (e: any) { setError(`Error al alternar: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al alternar: ${getErrorMessage(e)}`); }
   };
 
   const deleteRule = async (id: string) => {
@@ -141,7 +150,7 @@ export const ReglasTab: React.FC = () => {
     try {
       await priorityRulesApi.delete(id);
       setRules(prev => prev.filter(r => r.id !== id));
-    } catch (e: any) { setError(`Error al eliminar: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al eliminar: ${getErrorMessage(e)}`); }
   };
 
   return (

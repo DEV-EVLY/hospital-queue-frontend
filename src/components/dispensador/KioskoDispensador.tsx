@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { medicalServicesApi, patientsApi, appointmentsApi, ticketsApi } from '../../services/api';
+import { medicalServicesApi, patientsApi, appointmentsApi, ticketsApi, getErrorMessage, ApiError } from '../../services/api';
+import type { MedicalService, Patient, Appointment, Ticket } from '../../types/api';
 import { translations, SupportedLanguage } from '../../locales/i18n';
 import { Button, Card, Spinner } from '../ui';
 import {
@@ -28,8 +29,8 @@ const SERVICE_ICONS: Record<string, React.ReactNode> = {
   'smile':          <SmilePlus     className="w-10 h-10 text-violet-500" />,
 };
 
-const getServiceIcon = (iconName: string): React.ReactNode =>
-  SERVICE_ICONS[iconName] ?? <Activity className="w-10 h-10 text-surface-400" />;
+const getServiceIcon = (iconName: string | null): React.ReactNode =>
+  (iconName ? SERVICE_ICONS[iconName] : undefined) ?? <Activity className="w-10 h-10 text-surface-400" />;
 
 // ─── Priority helpers ─────────────────────────────────────────────────────────
 
@@ -79,18 +80,18 @@ export const KioskoDispensador: React.FC = () => {
 
   // Form state
   const [dni, setDni]                           = useState('');
-  const [services, setServices]                 = useState<any[]>([]);
-  const [patient, setPatient]                   = useState<any | null>(null);
-  const [appointments, setAppointments]         = useState<any[]>([]);
-  const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
-  const [selectedService, setSelectedService]   = useState<any | null>(null);
+  const [services, setServices]                 = useState<MedicalService[]>([]);
+  const [patient, setPatient]                   = useState<Patient | null>(null);
+  const [appointments, setAppointments]         = useState<Appointment[]>([]);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [selectedService, setSelectedService]   = useState<MedicalService | null>(null);
 
   const [esGestante, setEsGestante]               = useState(false);
   const [esAdultoMayor, setEsAdultoMayor]         = useState(false);
   const [tieneDiscapacidad, setTieneDiscapacidad] = useState(false);
 
-  const [issuedTicket, setIssuedTicket]   = useState<any | null>(null);
-  const [issuedService, setIssuedService] = useState<any | null>(null);
+  const [issuedTicket, setIssuedTicket]   = useState<Ticket | null>(null);
+  const [issuedService, setIssuedService] = useState<MedicalService | null>(null);
 
   // UI feedback
   const [countdown, setCountdown]           = useState(20);
@@ -105,7 +106,7 @@ export const KioskoDispensador: React.FC = () => {
   // ─── Load services on mount ─────────────────────────────────────────────────
   useEffect(() => {
     medicalServicesApi.list()
-      .then(d => setServices((d as any[]).filter(s => s.active)))
+      .then(d => setServices(d.filter(s => s.active)))
       .catch(() =>
         setErrorMsg('No se pudieron cargar los servicios. Por favor espera un momento y vuelve a intentar.')
       );
@@ -173,20 +174,17 @@ export const KioskoDispensador: React.FC = () => {
     setWelcomeName(null);
 
     try {
-      let foundPatient: any = null;
+      let foundPatient: Patient | null = null;
       try {
-        foundPatient = await patientsApi.search('DNI', dni) as any;
+        foundPatient = await patientsApi.search('DNI', dni);
         setPatient(foundPatient);
-        if (foundPatient?.fullName) setWelcomeName(foundPatient.fullName);
-        if (foundPatient?.conditions) {
-          if (foundPatient.conditions.includes('PREGNANT'))   setEsGestante(true);
-          if (foundPatient.conditions.includes('ELDERLY'))    setEsAdultoMayor(true);
-          if (foundPatient.conditions.includes('DISABILITY')) setTieneDiscapacidad(true);
-        }
-      } catch (searchErr: any) {
-        const is404 =
-          searchErr?.message?.includes('404') ||
-          searchErr?.message?.toLowerCase().includes('not found');
+        setWelcomeName(`${foundPatient.firstName} ${foundPatient.lastName}`.trim());
+        if (foundPatient.isPregnant)   setEsGestante(true);
+        if (foundPatient.isElderly)    setEsAdultoMayor(true);
+        if (foundPatient.hasDisability) setTieneDiscapacidad(true);
+      } catch (searchErr: unknown) {
+        // 404 = documento no registrado (visitante): no es un error que mostrar
+        const is404 = searchErr instanceof ApiError && searchErr.status === 404;
         if (!is404) {
           setRegistryWarning(
             'No pudimos verificar tu documento en el sistema. Tu turno será como visitante. Si tienes cita, acércate a admisión.'
@@ -196,7 +194,7 @@ export const KioskoDispensador: React.FC = () => {
 
       if (foundPatient?.id) {
         try {
-          const appts = await appointmentsApi.patientToday(foundPatient.id) as any[];
+          const appts = await appointmentsApi.patientToday(foundPatient.id);
           const viable = Array.isArray(appts) ? appts.filter(a => a.canBeQueued) : [];
           if (viable.length > 0) {
             setAppointments(viable);
@@ -225,10 +223,10 @@ export const KioskoDispensador: React.FC = () => {
       pregnant:   esGestante,
       elderly:    esAdultoMayor,
       disability: tieneDiscapacidad,
-    }) as any;
+    });
     const svc = services.find(s => s.id === serviceId);
     setIssuedTicket(ticket);
-    setIssuedService(svc);
+    setIssuedService(svc ?? null);
     setCountdown(20);
     goTo('TICKET_EMITIDO', 1);
   };
@@ -239,14 +237,14 @@ export const KioskoDispensador: React.FC = () => {
     setErrorMsg(null);
     try {
       await dispense(selectedAppointment.medicalServiceId, selectedAppointment.id);
-    } catch (e: any) {
-      setErrorMsg(`No se pudo generar el turno: ${e.message}`);
+    } catch (e: unknown) {
+      setErrorMsg(`No se pudo generar el turno: ${getErrorMessage(e)}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectService = (svc: any) => {
+  const handleSelectService = (svc: MedicalService) => {
     setSelectedService(svc);
     goTo('CONDICIONES', 1);
   };
@@ -257,8 +255,8 @@ export const KioskoDispensador: React.FC = () => {
     setErrorMsg(null);
     try {
       await dispense(selectedService.id);
-    } catch (e: any) {
-      setErrorMsg(`No se pudo generar el turno: ${e.message}`);
+    } catch (e: unknown) {
+      setErrorMsg(`No se pudo generar el turno: ${getErrorMessage(e)}`);
     } finally {
       setLoading(false);
     }
@@ -796,14 +794,6 @@ export const KioskoDispensador: React.FC = () => {
                         <span className="text-surface-500">{t.priority_points}</span>
                         <span className="font-semibold text-primary-700">{issuedTicket.priorityPoints} pts</span>
                       </div>
-                      {issuedTicket.estimatedWaitMinutes != null && (
-                        <div className="flex justify-between">
-                          <span className="text-surface-500">{t.estimated_wait}</span>
-                          <span className="font-semibold text-health-700 font-mono">
-                            ~{issuedTicket.estimatedWaitMinutes} {t.minutes}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Barcode */}

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, XCircle, ArrowUpDown } from 'lucide-react';
 import { Card, Badge, Button, Modal, Select, Spinner, DatePicker, Pagination } from '../../ui';
-import { ticketsApi, medicalServicesApi } from '../../../services/api';
+import type { SelectOption } from '../../ui';
+import { ticketsApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD, STATUS_LABELS, CHANNEL_LABELS } from './_shared';
+import type { Ticket, MedicalService, PriorityLevel, TicketStatus } from '../../../types/api';
 
 // Local calendar day (toISOString would give the UTC day, wrong after 19:00 in Lima)
 const today = () => {
@@ -10,14 +12,14 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const PRIORITY_OPTIONS = [
+const PRIORITY_OPTIONS: SelectOption<PriorityLevel | ''>[] = [
   { value: '', label: 'Todas las prioridades' },
   { value: 'URGENT',       label: 'Urgente' },
   { value: 'PREFERENTIAL', label: 'Preferencial' },
   { value: 'NORMAL',       label: 'Normal' },
 ];
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: SelectOption<TicketStatus | ''>[] = [
   { value: '',            label: 'Todos los estados' },
   { value: 'WAITING',     label: 'En Espera' },
   { value: 'CALLED',      label: 'Llamado' },
@@ -37,35 +39,35 @@ const PAGE_SIZE = 50;
 
 export const TicketsAdminTab: React.FC = () => {
   const [date,           setDate]           = useState(today());
-  const [tickets,        setTickets]        = useState<any[]>([]);
+  const [tickets,        setTickets]        = useState<Ticket[]>([]);
   const [page,           setPage]           = useState(0);
   const [totalElements,  setTotalElements]  = useState(0);
   const [totalPages,     setTotalPages]     = useState(0);
-  const [services,       setServices]       = useState<any[]>([]);
+  const [services,       setServices]       = useState<MedicalService[]>([]);
   const [filterService,  setFilterService]  = useState('');
   const [filterStatus,   setFilterStatus]   = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
-  const [reprioTarget,   setReprioTarget]   = useState<any | null>(null);
-  const [newPriority,    setNewPriority]    = useState('URGENT');
+  const [reprioTarget,   setReprioTarget]   = useState<Ticket | null>(null);
+  const [newPriority,    setNewPriority]    = useState<PriorityLevel>('URGENT');
 
   const loadTickets = useCallback(async (d: string, p: number) => {
     setLoading(true);
     try {
-      const data = await ticketsApi.adminList(d, p, PAGE_SIZE) as any;
+      const data = await ticketsApi.adminList(d, p, PAGE_SIZE);
       setTickets(data.content ?? []);
       setTotalElements(data.totalElements ?? 0);
       setTotalPages(data.totalPages ?? 0);
     }
-    catch (e: any) { setError(`Error al cargar tickets: ${e.message}`); }
+    catch (e: unknown) { setError(`Error al cargar tickets: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     medicalServicesApi.list()
-      .then(s => setServices(s as any[]))
-      .catch((e: any) => setError(`Error al cargar servicios: ${e.message}`));
+      .then(setServices)
+      .catch((e: unknown) => setError(`Error al cargar servicios: ${getErrorMessage(e)}`));
   }, []);
 
   useEffect(() => { loadTickets(date, page); }, [date, page, loadTickets]);
@@ -76,12 +78,12 @@ export const TicketsAdminTab: React.FC = () => {
     (!filterPriority || t.priorityLevel    === filterPriority)
   );
 
-  const handleCancel = async (t: any) => {
+  const handleCancel = async (t: Ticket) => {
     setError(null);
     try {
       const updated = await ticketsApi.cancel(t.id);
       setTickets(prev => prev.map(x => x.id === t.id ? updated : x));
-    } catch (e: any) { setError(`No se pudo cancelar: ${e.message}`); }
+    } catch (e: unknown) { setError(`No se pudo cancelar: ${getErrorMessage(e)}`); }
   };
 
   const handleReprioritize = async () => {
@@ -91,7 +93,7 @@ export const TicketsAdminTab: React.FC = () => {
       const updated = await ticketsApi.reprioritize(reprioTarget.id, newPriority);
       setTickets(prev => prev.map(x => x.id === reprioTarget.id ? updated : x));
       setReprioTarget(null);
-    } catch (e: any) { setError(`No se pudo repriorizar: ${e.message}`); }
+    } catch (e: unknown) { setError(`No se pudo repriorizar: ${getErrorMessage(e)}`); }
   };
 
   const serviceOptions = [

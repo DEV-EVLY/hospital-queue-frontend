@@ -8,7 +8,7 @@ class SoundService {
 
   private getAudioContext(): AudioContext {
     if (!this.audioCtx) {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       this.audioCtx = new AudioContextClass();
     }
     if (this.audioCtx.state === 'suspended') {

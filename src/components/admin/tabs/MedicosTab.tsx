@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, RefreshCw, Edit2, Save, Stethoscope, UserRound } from 'lucide-react';
 import { Card, Badge, Button, Input, Modal, Select, Spinner, Tabs, Pagination } from '../../ui';
-import { doctorsApi, specialtiesApi } from '../../../services/api';
-import { FormError, TH, TD } from './_shared';
+import type { SelectOption } from '../../ui';
+import { doctorsApi, specialtiesApi, getErrorMessage } from '../../../services/api';
+import { FormError, TH, TD, normalizePhone, phoneError } from './_shared';
+import type { Doctor, Specialty, DoctorStatus, DoctorRequest } from '../../../types/api';
+
+interface DoctorForm { licenseNumber: string; firstName: string; lastName: string; specialtyId: string; phone: string; email: string }
+interface SpecialtyForm { code: string; name: string; description: string }
 
 const DOCTOR_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: 'Disponible', BUSY: 'Ocupado', ON_LEAVE: 'De Licencia', OFF_DUTY: 'Fuera de Turno',
@@ -11,7 +16,7 @@ const DOCTOR_STATUS_LABELS: Record<string, string> = {
 const DOCTOR_STATUS_VARIANT: Record<string, 'success' | 'warning' | 'primary' | 'gray'> = {
   AVAILABLE: 'success', BUSY: 'warning', ON_LEAVE: 'primary', OFF_DUTY: 'gray',
 };
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: SelectOption<DoctorStatus>[] = [
   { value: 'AVAILABLE', label: 'Disponible' },
   { value: 'BUSY',      label: 'Ocupado' },
   { value: 'ON_LEAVE',  label: 'De Licencia' },
@@ -23,40 +28,40 @@ const MEDICOS_TABS = [
   { key: 'ESPECIALIDADES', label: 'Especialidades', icon: <Stethoscope className="w-4 h-4" /> },
 ];
 
-const BLANK_DOCTOR = { licenseNumber: '', firstName: '', lastName: '', specialtyId: '', phone: '', email: '' };
-const BLANK_SPECIALTY = { code: '', name: '', description: '' };
+const BLANK_DOCTOR: DoctorForm = { licenseNumber: '', firstName: '', lastName: '', specialtyId: '', phone: '', email: '' };
+const BLANK_SPECIALTY: SpecialtyForm = { code: '', name: '', description: '' };
 
 const DOC_PAGE_SIZE = 50;
 
 export const MedicosTab: React.FC = () => {
   const [subTab,       setSubTab]       = useState<'MEDICOS' | 'ESPECIALIDADES'>('MEDICOS');
-  const [doctors,      setDoctors]      = useState<any[]>([]);
+  const [doctors,      setDoctors]      = useState<Doctor[]>([]);
   const [docPage,      setDocPage]      = useState(0);
   const [docTotal,     setDocTotal]     = useState(0);
   const [docTotalPages, setDocTotalPages] = useState(0);
-  const [specialties,  setSpecialties]  = useState<any[]>([]);
+  const [specialties,  setSpecialties]  = useState<Specialty[]>([]);
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 
   // Doctor CRUD
   const [showDoctorModal, setShowDoctorModal] = useState(false);
   const [editingDoctorId, setEditingDoctorId] = useState<string | null>(null);
-  const [doctorForm,      setDoctorForm]      = useState<any>({ ...BLANK_DOCTOR });
+  const [doctorForm,      setDoctorForm]      = useState<DoctorForm>({ ...BLANK_DOCTOR });
   const [filterSpecialty, setFilterSpecialty] = useState('');
 
   // Specialty create
   const [showNewSpecialty, setShowNewSpecialty] = useState(false);
-  const [specialtyForm,    setSpecialtyForm]    = useState<any>({ ...BLANK_SPECIALTY });
+  const [specialtyForm,    setSpecialtyForm]    = useState<SpecialtyForm>({ ...BLANK_SPECIALTY });
   const [specialtyError,   setSpecialtyError]   = useState<string | null>(null);
 
   const loadDoctors = async (p = docPage) => {
     setLoading(true);
     try {
-      const data = await doctorsApi.list(undefined, p, DOC_PAGE_SIZE) as any;
+      const data = await doctorsApi.list(undefined, p, DOC_PAGE_SIZE);
       setDoctors(data.content ?? []);
       setDocTotal(data.totalElements ?? 0);
       setDocTotalPages(data.totalPages ?? 0);
-    } catch (e: any) { setError(`Error al cargar médicos: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al cargar médicos: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   };
 
@@ -64,14 +69,14 @@ export const MedicosTab: React.FC = () => {
     setLoading(true);
     try {
       const [data, s] = await Promise.all([
-        doctorsApi.list(undefined, p, DOC_PAGE_SIZE) as Promise<any>,
-        specialtiesApi.list() as Promise<any[]>,
+        doctorsApi.list(undefined, p, DOC_PAGE_SIZE),
+        specialtiesApi.list(),
       ]);
       setDoctors(data.content ?? []);
       setDocTotal(data.totalElements ?? 0);
       setDocTotalPages(data.totalPages ?? 0);
       setSpecialties(s);
-    } catch (e: any) { setError(`Error al cargar datos: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al cargar datos: ${getErrorMessage(e)}`); }
     finally { setLoading(false); }
   };
 
@@ -93,7 +98,7 @@ export const MedicosTab: React.FC = () => {
     setDoctorForm({ ...BLANK_DOCTOR }); setEditingDoctorId(null); setError(null); setShowDoctorModal(true);
   };
 
-  const openEditDoctor = (d: any) => {
+  const openEditDoctor = (d: Doctor) => {
     setDoctorForm({
       licenseNumber: d.licenseNumber || '',
       firstName:     d.firstName     || '',
@@ -109,32 +114,47 @@ export const MedicosTab: React.FC = () => {
     if (!doctorForm.licenseNumber || !doctorForm.firstName || !doctorForm.lastName) {
       setError('CMP, nombres y apellidos son obligatorios.'); return;
     }
+    if (!doctorForm.specialtyId) { setError('Selecciona una especialidad.'); return; }
+    const phoneProblem = phoneError(doctorForm.phone);
+    if (phoneProblem) { setError(phoneProblem); return; }
     setError(null);
+    const payload: DoctorRequest = {
+      licenseNumber: doctorForm.licenseNumber.trim(),
+      firstName: doctorForm.firstName.trim(),
+      lastName: doctorForm.lastName.trim(),
+      specialtyId: doctorForm.specialtyId,
+      phone: normalizePhone(doctorForm.phone),
+      email: doctorForm.email.trim() || null,
+    };
     try {
       if (editingDoctorId) {
-        const updated = await doctorsApi.update(editingDoctorId, doctorForm);
+        const updated = await doctorsApi.update(editingDoctorId, payload);
         setDoctors(prev => prev.map(d => d.id === editingDoctorId ? updated : d));
       } else {
-        await doctorsApi.create(doctorForm);
+        await doctorsApi.create(payload);
         setDocPage(0);
         loadDoctors(0);
       }
       setShowDoctorModal(false);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
-  const changeStatus = async (doctor: any, status: string) => {
+  const changeStatus = async (doctor: Doctor, status: DoctorStatus) => {
     try {
       const updated = await doctorsApi.updateStatus(doctor.id, status);
       setDoctors(prev => prev.map(d => d.id === doctor.id ? updated : d));
-    } catch (e: any) { setError(`Error al cambiar estado: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error al cambiar estado: ${getErrorMessage(e)}`); }
   };
 
-  const toggleActive = async (doctor: any) => {
+  const toggleActive = async (doctor: Doctor) => {
+    if (!doctor.specialtyId) { setError('El médico no tiene especialidad asignada; edítalo primero.'); return; }
     try {
-      const updated = await doctorsApi.update(doctor.id, { ...doctor, active: !doctor.active });
+      const updated = await doctorsApi.update(doctor.id, {
+        licenseNumber: doctor.licenseNumber, firstName: doctor.firstName, lastName: doctor.lastName,
+        specialtyId: doctor.specialtyId, phone: doctor.phone, email: doctor.email, active: !doctor.active,
+      });
       setDoctors(prev => prev.map(d => d.id === doctor.id ? updated : d));
-    } catch (e: any) { setError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
   };
 
   // ── Specialty handlers ───────────────────────────────────────────────────────
@@ -149,10 +169,10 @@ export const MedicosTab: React.FC = () => {
       setSpecialties(prev => [...prev, created]);
       setSpecialtyForm({ ...BLANK_SPECIALTY });
       setShowNewSpecialty(false);
-    } catch (e: any) { setSpecialtyError(e.message); }
+    } catch (e: unknown) { setSpecialtyError(getErrorMessage(e)); }
   };
 
-  const specialtyForDoctor = (id: string) => specialties.find(s => s.id === id);
+  const specialtyForDoctor = (id: string | null) => specialties.find(s => s.id === id);
 
   return (
     <div className="space-y-6">
@@ -332,25 +352,26 @@ export const MedicosTab: React.FC = () => {
       >
         <FormError msg={error} onDismiss={() => setError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="CMP / Nro. de licencia *" placeholder="CMP-12345"
+          <Input label="CMP / Nro. de licencia *" maxLength={20} placeholder="CMP-12345"
             value={doctorForm.licenseNumber}
-            onChange={e => setDoctorForm((f: any) => ({ ...f, licenseNumber: e.target.value }))} fullWidth />
-          <Select label="Especialidad" value={doctorForm.specialtyId}
-            onChange={v => setDoctorForm((f: any) => ({ ...f, specialtyId: v }))}
-            options={[{ value: '', label: 'Sin asignar' }, ...specialties.map(s => ({ value: s.id, label: s.name }))]}
+            onChange={e => setDoctorForm((f) => ({ ...f, licenseNumber: e.target.value }))} fullWidth />
+          <Select label="Especialidad *" value={doctorForm.specialtyId}
+            onChange={v => setDoctorForm((f) => ({ ...f, specialtyId: v }))}
+            placeholder="Selecciona una especialidad"
+            options={specialties.map(s => ({ value: s.id, label: s.name }))}
             fullWidth />
-          <Input label="Nombres *" placeholder="María"
+          <Input label="Nombres *" maxLength={100} placeholder="María"
             value={doctorForm.firstName}
-            onChange={e => setDoctorForm((f: any) => ({ ...f, firstName: e.target.value }))} fullWidth />
-          <Input label="Apellidos *" placeholder="González Torres"
+            onChange={e => setDoctorForm((f) => ({ ...f, firstName: e.target.value }))} fullWidth />
+          <Input label="Apellidos *" maxLength={100} placeholder="González Torres"
             value={doctorForm.lastName}
-            onChange={e => setDoctorForm((f: any) => ({ ...f, lastName: e.target.value }))} fullWidth />
-          <Input label="Teléfono" placeholder="+51 999 999 999"
+            onChange={e => setDoctorForm((f) => ({ ...f, lastName: e.target.value }))} fullWidth />
+          <Input label="Teléfono" maxLength={20} placeholder="+51 999 999 999"
             value={doctorForm.phone}
-            onChange={e => setDoctorForm((f: any) => ({ ...f, phone: e.target.value }))} fullWidth />
-          <Input label="Correo electrónico" type="email" placeholder="medico@hospital.pe"
+            onChange={e => setDoctorForm((f) => ({ ...f, phone: e.target.value }))} fullWidth />
+          <Input label="Correo electrónico" maxLength={150} type="email" placeholder="medico@hospital.pe"
             value={doctorForm.email}
-            onChange={e => setDoctorForm((f: any) => ({ ...f, email: e.target.value }))} fullWidth />
+            onChange={e => setDoctorForm((f) => ({ ...f, email: e.target.value }))} fullWidth />
         </div>
       </Modal>
 
@@ -373,13 +394,13 @@ export const MedicosTab: React.FC = () => {
         <div className="space-y-4">
           <Input label="Código *" placeholder="CARD"
             value={specialtyForm.code}
-            onChange={e => setSpecialtyForm((f: any) => ({ ...f, code: e.target.value.toUpperCase() }))} fullWidth />
+            onChange={e => setSpecialtyForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} fullWidth />
           <Input label="Nombre *" placeholder="Cardiología"
             value={specialtyForm.name}
-            onChange={e => setSpecialtyForm((f: any) => ({ ...f, name: e.target.value }))} fullWidth />
-          <Input label="Descripción" placeholder="Descripción opcional"
+            onChange={e => setSpecialtyForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
+          <Input label="Descripción" maxLength={500} placeholder="Descripción opcional"
             value={specialtyForm.description}
-            onChange={e => setSpecialtyForm((f: any) => ({ ...f, description: e.target.value }))} fullWidth />
+            onChange={e => setSpecialtyForm((f) => ({ ...f, description: e.target.value }))} fullWidth />
         </div>
       </Modal>
     </div>

@@ -3,6 +3,7 @@ import { Users, Clock, Flame, CheckCircle2, RefreshCw, UserX } from 'lucide-reac
 import { Card, CardHeader, Badge, Button, DatePicker } from '../../ui';
 import { reportsApi } from '../../../services/api';
 import { KpiCard, FormError, TH, TD } from './_shared';
+import type { DashboardReport, ServiceBreakdown } from '../../../types/api';
 
 // Local date (not UTC) so "hoy" matches the user's calendar day
 const fmt = (d: Date) =>
@@ -26,7 +27,7 @@ const PRIORITY_LABELS: Record<string, { label: string; variant: 'danger' | 'warn
 export const MetricasTab: React.FC = () => {
   const [from,      setFrom]      = useState(todayStr());
   const [to,        setTo]        = useState(todayStr());
-  const [dashboard, setDashboard] = useState<any>(null);
+  const [dashboard, setDashboard] = useState<DashboardReport | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
 
@@ -41,7 +42,7 @@ export const MetricasTab: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setDashboard(await reportsApi.dashboard(from, to) as any);
+      setDashboard(await reportsApi.dashboard(from, to));
       setError(null);
     } catch {
       setError('No se pudieron cargar las métricas. Verifica la conexión con el servidor.');
@@ -55,7 +56,7 @@ export const MetricasTab: React.FC = () => {
     return () => clearInterval(id);
   }, [load, to]);
 
-  const priority = Object.entries(dashboard?.priorityDistribution ?? {}) as [string, number][];
+  const priority = Object.entries(dashboard?.priorityDistribution ?? {});
   const priorityTotal = priority.reduce((a, [, n]) => a + n, 0);
 
   const hourly = Object.entries(dashboard?.hourlyDemand ?? {})
@@ -190,7 +191,7 @@ export const MetricasTab: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {(dashboard?.serviceBreakdown ?? []).map((s: any) => (
+              {(dashboard?.serviceBreakdown ?? []).map((s: ServiceBreakdown) => (
                 <tr key={s.serviceCode} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
                   <TD><span className="font-semibold text-surface-900">{s.serviceName}</span></TD>
                   <TD><Badge variant="primary">{s.serviceCode}</Badge></TD>

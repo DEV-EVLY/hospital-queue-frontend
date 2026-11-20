@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, RefreshCw, Edit2, Save, Stethoscope, Building2 } from 'lucide-react';
 import { Card, Badge, Button, Input, Modal, Tabs, Select } from '../../ui';
-import { medicalServicesApi, consultingRoomsApi } from '../../../services/api';
+import { medicalServicesApi, consultingRoomsApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
+import type { MedicalService, ConsultingRoom } from '../../../types/api';
 
-const BLANK_SERVICE = { name: '', ticketPrefix: '', iconName: 'stethoscope', estimatedMinutes: 20 };
-const BLANK_ROOM    = { name: '', code: '', medicalServiceId: '', location: '' };
+interface ServiceForm { name: string; ticketPrefix: string; iconName: string; estimatedMinutes: number }
+interface RoomForm { name: string; code: string; medicalServiceId: string; location: string }
+
+const BLANK_SERVICE: ServiceForm = { name: '', ticketPrefix: '', iconName: 'stethoscope', estimatedMinutes: 20 };
+const BLANK_ROOM: RoomForm = { name: '', code: '', medicalServiceId: '', location: '' };
 
 const ROOM_STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'primary' | 'gray' }> = {
   AVAILABLE: { label: 'Disponible', variant: 'success' },
@@ -29,29 +33,29 @@ const CATALOG_TABS = [
 ];
 
 export const CatalogoTab: React.FC = () => {
-  const [services, setServices] = useState<any[]>([]);
-  const [rooms,    setRooms]    = useState<any[]>([]);
+  const [services, setServices] = useState<MedicalService[]>([]);
+  const [rooms,    setRooms]    = useState<ConsultingRoom[]>([]);
   const [subTab,   setSubTab]   = useState<'SERVICIOS' | 'CONSULTORIOS'>('SERVICIOS');
 
   // Service modal (create + edit)
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
-  const [serviceForm,      setServiceForm]      = useState<any>({ ...BLANK_SERVICE });
+  const [serviceForm,      setServiceForm]      = useState<ServiceForm>({ ...BLANK_SERVICE });
   const [serviceError,     setServiceError]     = useState<string | null>(null);
 
   // Room modal (create + edit)
   const [showRoomModal, setShowRoomModal] = useState(false);
   const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
-  const [roomForm,      setRoomForm]      = useState<any>({ ...BLANK_ROOM });
+  const [roomForm,      setRoomForm]      = useState<RoomForm>({ ...BLANK_ROOM });
   const [roomError,     setRoomError]     = useState<string | null>(null);
 
   const loadServices = async () => {
-    try { setServices(await medicalServicesApi.list() as any[]); }
-    catch (e: any) { setServiceError(`Error al cargar servicios: ${e.message}`); }
+    try { setServices(await medicalServicesApi.list()); }
+    catch (e: unknown) { setServiceError(`Error al cargar servicios: ${getErrorMessage(e)}`); }
   };
   const loadRooms = async () => {
-    try { setRooms(await consultingRoomsApi.list() as any[]); }
-    catch (e: any) { setRoomError(`Error al cargar consultorios: ${e.message}`); }
+    try { setRooms(await consultingRoomsApi.list()); }
+    catch (e: unknown) { setRoomError(`Error al cargar consultorios: ${getErrorMessage(e)}`); }
   };
 
   useEffect(() => { loadServices(); loadRooms(); }, []);
@@ -61,7 +65,7 @@ export const CatalogoTab: React.FC = () => {
   const openCreateService = () => {
     setServiceForm({ ...BLANK_SERVICE }); setEditingServiceId(null); setServiceError(null); setShowServiceModal(true);
   };
-  const openEditService = (s: any) => {
+  const openEditService = (s: MedicalService) => {
     setServiceForm({ name: s.name, ticketPrefix: s.ticketPrefix, iconName: s.iconName || 'stethoscope', estimatedMinutes: s.estimatedMinutes });
     setEditingServiceId(s.id); setServiceError(null); setShowServiceModal(true);
   };
@@ -83,14 +87,14 @@ export const CatalogoTab: React.FC = () => {
         setServices(prev => [...prev, created]);
       }
       setShowServiceModal(false);
-    } catch (e: any) { setServiceError(e.message); }
+    } catch (e: unknown) { setServiceError(getErrorMessage(e)); }
   };
 
   const toggleService = async (id: string) => {
     try {
       await medicalServicesApi.toggleActive(id);
       setServices(prev => prev.map(s => s.id === id ? { ...s, active: !s.active } : s));
-    } catch (e: any) { setServiceError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setServiceError(`Error: ${getErrorMessage(e)}`); }
   };
 
   // ── Room handlers ──────────────────────────────────────────────────────────
@@ -98,7 +102,7 @@ export const CatalogoTab: React.FC = () => {
   const openCreateRoom = () => {
     setRoomForm({ ...BLANK_ROOM }); setEditingRoomId(null); setRoomError(null); setShowRoomModal(true);
   };
-  const openEditRoom = (r: any) => {
+  const openEditRoom = (r: ConsultingRoom) => {
     setRoomForm({ name: r.name, code: r.code, medicalServiceId: r.medicalServiceId || '', location: r.location || '' });
     setEditingRoomId(r.id); setRoomError(null); setShowRoomModal(true);
   };
@@ -121,14 +125,14 @@ export const CatalogoTab: React.FC = () => {
         setRooms(prev => [...prev, created]);
       }
       setShowRoomModal(false);
-    } catch (e: any) { setRoomError(e.message); }
+    } catch (e: unknown) { setRoomError(getErrorMessage(e)); }
   };
 
   const toggleRoom = async (id: string) => {
     try {
       const updated = await consultingRoomsApi.toggleActive(id);
       setRooms(prev => prev.map(r => r.id === id ? updated : r));
-    } catch (e: any) { setRoomError(`Error: ${e.message}`); }
+    } catch (e: unknown) { setRoomError(`Error: ${getErrorMessage(e)}`); }
   };
 
   const activeServiceOptions = [
@@ -310,19 +314,19 @@ export const CatalogoTab: React.FC = () => {
       >
         <FormError msg={serviceError} onDismiss={() => setServiceError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Nombre *" placeholder="Cardiología"
+          <Input label="Nombre *" maxLength={100} placeholder="Cardiología"
             value={serviceForm.name}
-            onChange={e => setServiceForm((f: any) => ({ ...f, name: e.target.value }))} fullWidth />
+            onChange={e => setServiceForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
           <Input label="Prefijo de ticket *" placeholder="C" maxLength={3}
             value={serviceForm.ticketPrefix}
-            onChange={e => setServiceForm((f: any) => ({ ...f, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
-          <Input label="Tiempo estimado (min)" type="number" min={1}
+            onChange={e => setServiceForm((f) => ({ ...f, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
+          <Input label="Tiempo estimado (min)" type="number" min={1} max={480}
             value={serviceForm.estimatedMinutes}
-            onChange={e => setServiceForm((f: any) => ({ ...f, estimatedMinutes: +e.target.value }))} fullWidth />
+            onChange={e => setServiceForm((f) => ({ ...f, estimatedMinutes: +e.target.value }))} fullWidth />
           <Select
             label="Ícono"
             value={serviceForm.iconName}
-            onChange={val => setServiceForm((f: any) => ({ ...f, iconName: val }))}
+            onChange={val => setServiceForm((f) => ({ ...f, iconName: val }))}
             options={ICON_OPTIONS}
             fullWidth
           />
@@ -347,22 +351,22 @@ export const CatalogoTab: React.FC = () => {
       >
         <FormError msg={roomError} onDismiss={() => setRoomError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Nombre *" placeholder="Consultorio 1"
+          <Input label="Nombre *" maxLength={100} placeholder="Consultorio 1"
             value={roomForm.name}
-            onChange={e => setRoomForm((f: any) => ({ ...f, name: e.target.value }))} fullWidth />
-          <Input label="Código *" placeholder="C-01"
+            onChange={e => setRoomForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
+          <Input label="Código *" maxLength={20} placeholder="C-01"
             value={roomForm.code}
-            onChange={e => setRoomForm((f: any) => ({ ...f, code: e.target.value }))} fullWidth />
+            onChange={e => setRoomForm((f) => ({ ...f, code: e.target.value }))} fullWidth />
           <Select
             label="Servicio médico"
             value={roomForm.medicalServiceId}
-            onChange={val => setRoomForm((f: any) => ({ ...f, medicalServiceId: val }))}
+            onChange={val => setRoomForm((f) => ({ ...f, medicalServiceId: val }))}
             options={activeServiceOptions}
             fullWidth
           />
-          <Input label="Ubicación" placeholder="Planta Baja - Ala A"
+          <Input label="Ubicación" maxLength={100} placeholder="Planta Baja - Ala A"
             value={roomForm.location}
-            onChange={e => setRoomForm((f: any) => ({ ...f, location: e.target.value }))} fullWidth
+            onChange={e => setRoomForm((f) => ({ ...f, location: e.target.value }))} fullWidth
             className="sm:col-span-2" />
         </div>
       </Modal>

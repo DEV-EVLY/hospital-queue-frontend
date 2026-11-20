@@ -1,4 +1,27 @@
+import type {
+  Appointment, AppointmentIngestRequest, CallNextRequest, CircuitBreakerStatus, CompleteAttentionRequest,
+  ConsultingRoom, ConsultingRoomRequest, DashboardReport, DispenseTicketRequest, Doctor, DoctorRequest,
+  DoctorStatus, Empty, EvaluateRequest, EvaluationResult, ISODate, LoginRequest, LoginResponse, MedicalService,
+  MedicalServiceRequest, OfflineSyncItem, PageResponse, Patient, PatientRequest, PriorityLevel, PriorityRule,
+  PriorityRuleRequest, ReportFilterParams, Specialty, SpecialtyRequest, SyncNowResponse, Ticket,
+  TicketReportRow, UUID, User, UserGroup, UserGroupMembership, UserGroupRequest, CreateUserRequest,
+  UpdateUserRequest,
+} from '../types/api';
+
 const BASE_URL = '/api';
+
+// ── Errores ───────────────────────────────────────────────────────────────────
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Extrae un mensaje legible de cualquier valor capturado en un `catch`. */
+export const getErrorMessage = (e: unknown, fallback = 'Error inesperado'): string =>
+  e instanceof Error ? e.message : typeof e === 'string' ? e : fallback;
 
 // C-03: dispatch event on 401 only when a session existed (token present) — avoids
 // redirecting anonymous kiosk users who legitimately have no token
@@ -8,266 +31,250 @@ const dispatch401 = () => {
   }
 };
 
-export const api = {
-  async get<T = any>(endpoint: string): Promise<T> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      }
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(errData.message || 'Error en la petición');
-    }
-    return await res.json();
-  },
+/**
+ * Formatos de error de los microservicios:
+ *  - RFC 7807 ProblemDetail (patient, doctor, queue, priority, appointment, reporting): { detail }
+ *  - auth-service: { message } o, en validaciones, { details: { campo: mensaje } }
+ */
+interface ErrorBody {
+  detail?: string;
+  message?: string;
+  error?: string;
+  details?: Record<string, string>;
+}
 
-  async post<T = any>(endpoint: string, body?: any): Promise<T> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(errData.message || 'Error en la petición');
-    }
-    return await res.json();
-  },
+const extractErrorMessage = (b: ErrorBody | null): string | null => {
+  if (!b) return null;
+  if (b.details && Object.keys(b.details).length > 0) {
+    return Object.entries(b.details).map(([field, msg]) => `${field}: ${msg}`).join('; ');
+  }
+  return b.detail || b.message || b.error || null;
+};
 
-  async put<T = any>(endpoint: string, body?: any): Promise<T> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(errData.message || 'Error en la petición');
-    }
-    // 204 No Content responses have an empty body
-    const text = await res.text();
-    return text ? JSON.parse(text) : ({} as T);
-  },
+/** Convierte un objeto de filtros en query string, omitiendo valores vacíos. */
+const toQuery = (obj: object): string =>
+  new URLSearchParams(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => [k, String(v)] as [string, string])
+  ).toString();
 
-  async patch<T = any>(endpoint: string, body?: any): Promise<T> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(errData.message || 'Error en la petición');
-    }
-    const text = await res.text();
-    return text ? JSON.parse(text) : ({} as T);
-  },
+const downloadBlob = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
-  async delete<T = any>(endpoint: string): Promise<T> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      method: 'DELETE',
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(errData.message || 'Error en la petición');
-    }
-    const text = await res.text();
-    return text ? JSON.parse(text) : ({} as T);
-  },
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-  // C-04: auth-aware CSV download — never exposes the token in a URL
-  async downloadCsv(endpoint: string, filename: string): Promise<void> {
-    const token = localStorage.getItem('token');
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    });
-    if (res.status === 401) { dispatch401(); throw new Error('Sesión expirada. Vuelve a iniciar sesión.'); }
-    if (!res.ok) throw new Error('Error al descargar archivo');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+const authHeaders = (withJson: boolean): Record<string, string> => {
+  const token = localStorage.getItem('token');
+  return {
+    ...(withJson ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
+/** Lanza ApiError si la respuesta no es 2xx (y notifica 401 si corresponde). */
+const ensureOk = async (res: Response): Promise<void> => {
+  if (res.status === 401) {
+    dispatch401();
+    throw new ApiError('Sesión expirada. Vuelve a iniciar sesión.', 401);
+  }
+  if (!res.ok) {
+    const errData = await res.json().catch(() => null) as ErrorBody | null;
+    throw new ApiError(extractErrorMessage(errData) || res.statusText || 'Error en la petición', res.status);
   }
 };
 
+async function request<T>(method: Method, endpoint: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method,
+    headers: authHeaders(method !== 'DELETE'),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  await ensureOk(res);
+  // 204 No Content / cuerpo vacío → objeto vacío
+  const text = await res.text();
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+/** Cliente HTTP base. El tipo de respuesta `T` es obligatorio: no existe un default `any`. */
+export const api = {
+  get:    <T>(endpoint: string)                   => request<T>('GET', endpoint),
+  post:   <T>(endpoint: string, body?: unknown)   => request<T>('POST', endpoint, body),
+  put:    <T>(endpoint: string, body?: unknown)   => request<T>('PUT', endpoint, body),
+  patch:  <T>(endpoint: string, body?: unknown)   => request<T>('PATCH', endpoint, body),
+  delete: <T = Empty>(endpoint: string)           => request<T>('DELETE', endpoint),
+
+  // C-04: auth-aware CSV download — never exposes the token in a URL
+  async downloadCsv(endpoint: string, filename: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}${endpoint}`, { headers: authHeaders(false) });
+    if (res.status === 401) { dispatch401(); throw new ApiError('Sesión expirada. Vuelve a iniciar sesión.', 401); }
+    if (!res.ok) throw new ApiError('Error al descargar archivo', res.status);
+    downloadBlob(await res.blob(), filename);
+  },
+};
+
 // ---------------------------------------------------------------------------
-// Named endpoint helpers
+// Named endpoint helpers (todos con tipos de petición y respuesta)
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  login: (body: { username: string; password: string }) =>
-    api.post('/auth/login', body),
-  me: () => api.get('/auth/me')
+  login: (body: LoginRequest) => api.post<LoginResponse>('/auth/login', body),
+  me:    () => api.get<User>('/auth/me'),
 };
 
 export const ticketsApi = {
-  dispense: (body: any) =>
-    api.post('/tickets/dispense', body),
-  callNext: (body: any) =>
-    api.post('/tickets/call-next', body),
-  recall: (id: string | number) =>
-    api.post(`/tickets/${id}/recall`),
-  startAttention: (id: string | number) =>
-    api.post(`/tickets/${id}/start-attention`),
-  completeAttention: (id: string | number, notes?: string) =>
-    api.post(`/tickets/${id}/complete-attention`, { finalStatus: 'ATTENDED', notes: notes ?? null }),
-  markAbsent: (id: string | number) =>
-    api.post(`/tickets/${id}/complete-attention`, { finalStatus: 'NOT_ATTENDED', notes: null }),
-  deriveTicket: (id: string | number, targetServiceId: string) =>
-    api.post(`/tickets/${id}/derive`, { targetServiceId }),
-  lastCalled: (limit = 6) =>
-    api.get(`/tickets/last-called?limit=${limit}`),
-  activeQueue: (serviceId: string | number) =>
-    api.get(`/tickets/active-queue?serviceId=${serviceId}`),
-  currentRoom: (consultingRoomId: string) =>
-    api.get(`/tickets/current-room?consultingRoomId=${consultingRoomId}`),
-  waitingQueue: (limit = 20) =>
-    api.get(`/tickets/waiting?limit=${limit}`),
-  adminList: (date?: string, page = 0, size = 50) => {
+  dispense:  (body: DispenseTicketRequest) => api.post<Ticket>('/tickets/dispense', body),
+  callNext:  (body: CallNextRequest)       => api.post<Ticket>('/tickets/call-next', body),
+  recall:           (id: UUID) => api.post<Ticket>(`/tickets/${id}/recall`),
+  startAttention:   (id: UUID) => api.post<Ticket>(`/tickets/${id}/start-attention`),
+  completeAttention: (id: UUID, notes?: string) => {
+    const body: CompleteAttentionRequest = { finalStatus: 'ATTENDED', notes: notes ?? null };
+    return api.post<Ticket>(`/tickets/${id}/complete-attention`, body);
+  },
+  markAbsent: (id: UUID) => {
+    const body: CompleteAttentionRequest = { finalStatus: 'NOT_ATTENDED', notes: null };
+    return api.post<Ticket>(`/tickets/${id}/complete-attention`, body);
+  },
+  deriveTicket: (id: UUID, targetServiceId: UUID) =>
+    api.post<Ticket>(`/tickets/${id}/derive`, { targetServiceId }),
+  lastCalled:   (limit = 6)  => api.get<Ticket[]>(`/tickets/last-called?limit=${limit}`),
+  activeQueue:  (serviceId: UUID) => api.get<Ticket[]>(`/tickets/active-queue?serviceId=${serviceId}`),
+  /** Ticket activo del consultorio, o null si no hay (el backend responde cuerpo vacío). */
+  currentRoom:  async (consultingRoomId: UUID): Promise<Ticket | null> => {
+    const t = await api.get<Ticket | Empty>(`/tickets/current-room?consultingRoomId=${consultingRoomId}`);
+    return 'ticketCode' in t ? (t as Ticket) : null;
+  },
+  waitingQueue: (limit = 20) => api.get<Ticket[]>(`/tickets/waiting?limit=${limit}`),
+  adminList: (date?: ISODate, page = 0, size = 50) => {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (date) params.set('date', date);
-    return api.get(`/tickets/admin?${params}`);
+    return api.get<PageResponse<Ticket>>(`/tickets/admin?${params}`);
   },
-  cancel: (id: string) =>
-    api.post(`/tickets/${id}/cancel`),
-  reprioritize: (id: string, priorityLevel: string) =>
-    api.put(`/tickets/${id}/reprioritize`, { priorityLevel }),
+  cancel:       (id: UUID) => api.post<Ticket>(`/tickets/${id}/cancel`),
+  reprioritize: (id: UUID, priorityLevel: PriorityLevel) =>
+    api.put<Ticket>(`/tickets/${id}/reprioritize`, { priorityLevel }),
 };
 
 export const appointmentsApi = {
-  hisIngest: (body: any) =>
-    api.post('/appointments/his-ingest', body),
-  patientToday: (patientId: string | number) =>
-    api.get(`/appointments/patient-today?patientId=${patientId}`)
+  hisIngest:    (body: AppointmentIngestRequest) => api.post<Appointment>('/appointments/his-ingest', body),
+  patientToday: (patientId: UUID) => api.get<Appointment[]>(`/appointments/patient-today?patientId=${patientId}`),
 };
 
 export const priorityRulesApi = {
-  list: () => api.get('/priority-rules'),
-  create: (body: any) => api.post('/priority-rules', body),
-  update: (id: string | number, body: any) => api.put(`/priority-rules/${id}`, body),
-  delete: (id: string | number) => api.delete(`/priority-rules/${id}`),
-  toggle: (id: string | number) => api.patch(`/priority-rules/${id}/toggle`),
-  evaluate: (body: any) => api.post('/priority-rules/evaluate', body)
+  list:     () => api.get<PriorityRule[]>('/priority-rules'),
+  create:   (body: PriorityRuleRequest) => api.post<PriorityRule>('/priority-rules', body),
+  update:   (id: UUID, body: PriorityRuleRequest) => api.put<PriorityRule>(`/priority-rules/${id}`, body),
+  delete:   (id: UUID) => api.delete(`/priority-rules/${id}`),
+  toggle:   (id: UUID) => api.patch<PriorityRule>(`/priority-rules/${id}/toggle`),
+  evaluate: (body: EvaluateRequest) => api.post<EvaluationResult>('/priority-rules/evaluate', body),
 };
 
 export const reportsApi = {
-  dashboard: (from?: string, to?: string) => {
+  /** Rango inclusive [from, to]. Sin parámetros: hoy. Con solo `from`: de `from` hasta hoy. */
+  dashboard: (from?: ISODate, to?: ISODate) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to)   params.set('to', to);
     const qs = params.toString();
-    return api.get(`/reports/dashboard${qs ? `?${qs}` : ''}`);
+    return api.get<DashboardReport>(`/reports/dashboard${qs ? `?${qs}` : ''}`);
   },
-  export: (params?: Record<string, string>) => {
-    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return api.get(`/reports/export${qs}`);
+  export: (params: ReportFilterParams) => {
+    return api.get<TicketReportRow[]>(`/reports/export?${toQuery({ ...params, format: 'json' })}`);
   },
   // C-04: auth-aware CSV download
-  downloadCsv: (params?: Record<string, string>) => {
-    const qs = params ? '?' + new URLSearchParams({ ...params, format: 'csv' }).toString() : '?format=csv';
-    return api.downloadCsv(`/reports/export${qs}`, 'reporte-turnos.csv');
-  }
+  downloadCsv: (params: ReportFilterParams) => {
+    return api.downloadCsv(`/reports/export?${toQuery({ ...params, format: 'csv' })}`, 'reporte-turnos.csv');
+  },
 };
 
 export const circuitBreakerApi = {
-  status: () => api.get('/circuit-breaker/status'),
-  syncNow: () => api.post('/circuit-breaker/sync-now'),
-  // C-04: auth-aware offline export
-  downloadOfflineCsv: () =>
-    api.downloadCsv('/circuit-breaker/export-offline?format=csv', 'offline-sync.csv')
+  status:  () => api.get<CircuitBreakerStatus>('/circuit-breaker/status'),
+  syncNow: () => api.post<SyncNowResponse>('/circuit-breaker/sync-now'),
+  offlineItems: () => api.get<OfflineSyncItem[]>('/circuit-breaker/export-offline'),
+  /** El endpoint solo devuelve JSON (ignora `format`): el CSV se arma en el cliente. */
+  downloadOfflineCsv: async () => {
+    const items = await api.get<OfflineSyncItem[]>('/circuit-breaker/export-offline');
+    const cols: (keyof OfflineSyncItem)[] = [
+      'id', 'entityType', 'operation', 'status', 'attemptCount', 'maxAttempts',
+      'nextRetryAt', 'lastError', 'createdAt', 'updatedAt', 'payload',
+    ];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [cols.join(','), ...items.map(i => cols.map(c => esc(i[c])).join(','))].join('\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'offline-sync.csv');
+  },
 };
 
 export const medicalServicesApi = {
-  list: () => api.get('/medical-services'),
-  create: (body: any) => api.post('/medical-services', body),
-  update: (id: string | number, body: any) => api.put(`/medical-services/${id}`, body),
-  toggleActive: (id: string | number) => api.patch(`/medical-services/${id}/toggle`),
+  list:         () => api.get<MedicalService[]>('/medical-services'),
+  create:       (body: MedicalServiceRequest) => api.post<MedicalService>('/medical-services', body),
+  update:       (id: UUID, body: MedicalServiceRequest) => api.put<MedicalService>(`/medical-services/${id}`, body),
+  toggleActive: (id: UUID) => api.patch<MedicalService>(`/medical-services/${id}/toggle`),
 };
 
 export const consultingRoomsApi = {
-  list: () => api.get('/consulting-rooms'),
-  create: (body: any) => api.post('/consulting-rooms', body),
-  update: (id: string | number, body: any) => api.put(`/consulting-rooms/${id}`, body),
-  toggleActive: (id: string | number) => api.patch(`/consulting-rooms/${id}/toggle`),
+  list:         () => api.get<ConsultingRoom[]>('/consulting-rooms'),
+  create:       (body: ConsultingRoomRequest) => api.post<ConsultingRoom>('/consulting-rooms', body),
+  update:       (id: UUID, body: ConsultingRoomRequest) => api.put<ConsultingRoom>(`/consulting-rooms/${id}`, body),
+  toggleActive: (id: UUID) => api.patch<ConsultingRoom>(`/consulting-rooms/${id}/toggle`),
 };
 
 export const userGroupsApi = {
-  list: () => api.get('/user-groups'),
-  memberships: () => api.get('/user-groups/memberships'),
-  create: (body: any) => api.post('/user-groups', body),
-  update: (id: string, body: any) => api.put(`/user-groups/${id}`, body),
-  toggleActive: (id: string) => api.patch(`/user-groups/${id}/toggle`),
-  remove: (id: string) => api.delete(`/user-groups/${id}`),
-  members: (id: string) => api.get(`/user-groups/${id}/members`),
-  addMember: (id: string, userId: string) => api.put(`/user-groups/${id}/members/${userId}`),
-  removeMember: (id: string, userId: string) => api.delete(`/user-groups/${id}/members/${userId}`),
+  list:         () => api.get<UserGroup[]>('/user-groups'),
+  memberships:  () => api.get<UserGroupMembership[]>('/user-groups/memberships'),
+  create:       (body: UserGroupRequest) => api.post<UserGroup>('/user-groups', body),
+  update:       (id: UUID, body: UserGroupRequest) => api.put<UserGroup>(`/user-groups/${id}`, body),
+  toggleActive: (id: UUID) => api.patch<UserGroup>(`/user-groups/${id}/toggle`),
+  remove:       (id: UUID) => api.delete(`/user-groups/${id}`),
+  members:      (id: UUID) => api.get<User[]>(`/user-groups/${id}/members`),
+  addMember:    (id: UUID, userId: UUID) => api.put<Empty>(`/user-groups/${id}/members/${userId}`),
+  removeMember: (id: UUID, userId: UUID) => api.delete(`/user-groups/${id}/members/${userId}`),
 };
 
 export const usersApi = {
-  list: (page = 0, size = 20, groupId?: string) => {
+  list: (page = 0, size = 20, groupId?: UUID) => {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (groupId) params.set('groupId', groupId);
-    return api.get(`/users?${params}`);
+    return api.get<PageResponse<User>>(`/users?${params}`);
   },
-  create: (body: any) => api.post('/users', body),
-  update: (id: string | number, body: any) => api.put(`/users/${id}`, body),
-  toggleActive: (id: string | number) => api.patch(`/users/${id}/toggle`),
-  resetPassword: (id: string | number, newPassword: string) =>
-    api.post(`/users/${id}/reset-password`, { newPassword }),
+  create:        (body: CreateUserRequest) => api.post<User>('/users', body),
+  update:        (id: UUID, body: UpdateUserRequest) => api.put<User>(`/users/${id}`, body),
+  toggleActive:  (id: UUID) => api.patch<User>(`/users/${id}/toggle`),
+  resetPassword: (id: UUID, newPassword: string) => api.post<Empty>(`/users/${id}/reset-password`, { newPassword }),
 };
 
 export const patientsApi = {
-  list: (page = 0, size = 20) => api.get(`/patients?page=${page}&size=${size}`),
+  list: (page = 0, size = 20) => api.get<PageResponse<Patient>>(`/patients?page=${page}&size=${size}`),
   search: (documentType: string, documentNumber: string) =>
-    api.get(
+    api.get<Patient>(
       `/patients/search?documentType=${encodeURIComponent(documentType)}&documentNumber=${encodeURIComponent(documentNumber)}`
     ),
-  create: (body: any) => api.post('/patients', body),
-  update: (id: string, body: any) => api.put(`/patients/${id}`, body),
+  create: (body: PatientRequest) => api.post<Patient>('/patients', body),
+  update: (id: UUID, body: PatientRequest) => api.put<Patient>(`/patients/${id}`, body),
 };
 
 export const doctorsApi = {
-  list: (status?: string, page = 0, size = 50) => {
+  list: (status?: DoctorStatus, page = 0, size = 50) => {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (status) params.set('status', status);
-    return api.get(`/doctors?${params}`);
+    return api.get<PageResponse<Doctor>>(`/doctors?${params}`);
   },
-  findById: (id: string) => api.get(`/doctors/${id}`),
-  bySpecialty: (specialtyId: string) => api.get(`/doctors/by-specialty/${specialtyId}`),
-  create: (body: any) => api.post('/doctors', body),
-  update: (id: string, body: any) => api.put(`/doctors/${id}`, body),
-  updateStatus: (id: string, status: string) => api.patch(`/doctors/${id}/status`, { status })
+  findById:     (id: UUID) => api.get<Doctor>(`/doctors/${id}`),
+  bySpecialty:  (specialtyId: UUID) => api.get<Doctor[]>(`/doctors/by-specialty/${specialtyId}`),
+  create:       (body: DoctorRequest) => api.post<Doctor>('/doctors', body),
+  update:       (id: UUID, body: DoctorRequest) => api.put<Doctor>(`/doctors/${id}`, body),
+  updateStatus: (id: UUID, status: DoctorStatus) => api.patch<Doctor>(`/doctors/${id}/status`, { status }),
 };
 
 export const specialtiesApi = {
-  list: () => api.get('/specialties'),
-  findById: (id: string) => api.get(`/specialties/${id}`),
-  create: (body: any) => api.post('/specialties', body),
+  list:     () => api.get<Specialty[]>('/specialties'),
+  findById: (id: UUID) => api.get<Specialty>(`/specialties/${id}`),
+  create:   (body: SpecialtyRequest) => api.post<Specialty>('/specialties', body),
 };
