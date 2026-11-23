@@ -1,27 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
-import { Card, CardHeader, CardFooter, Badge, Button, Spinner } from '../../ui';
+import { Card, CardHeader, CardFooter, Badge, PriorityBadge, Button, Spinner } from '../../ui';
 import { DatePicker } from '../../ui';
 import { Select } from '../../ui';
 import type { SelectOption } from '../../ui';
 import { reportsApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
-import { TH, TD, STATUS_LABELS, CHANNEL_LABELS, fmtSeconds } from './_shared';
+import { TH, TD, fmtSeconds } from './_shared';
 import type { MedicalService, TicketReportRow, PriorityLevel, IssuanceChannel, ReportFilterParams } from '../../../types/api';
-
-const PRIORITY_OPTIONS: SelectOption<PriorityLevel | ''>[] = [
-  { value: '', label: 'Todas' },
-  { value: 'URGENT', label: 'Urgente' },
-  { value: 'PREFERENTIAL', label: 'Preferencial' },
-  { value: 'NORMAL', label: 'Normal' },
-];
-
-const CHANNEL_OPTIONS: SelectOption<IssuanceChannel | ''>[] = [
-  { value: '', label: 'Todos los canales' },
-  { value: 'KIOSK', label: 'Kiosko' },
-  { value: 'OPERATOR', label: 'Operador' },
-  { value: 'WEB', label: 'Web' },
-  { value: 'HIS_AUTO', label: 'HIS Automático' },
-];
+import { tr, statusLabel, channelLabel, priorityOptions, channelOptions, withEmpty } from '../../../i18n';
 
 // Local calendar day (toISOString would give the UTC day, wrong after 19:00 in Lima)
 const today = () => {
@@ -33,10 +19,10 @@ const MAX_RANGE_DAYS = 90;
 
 /** Returns an error message if the range is invalid, otherwise null. */
 const validateRange = (from: string, to: string): string | null => {
-  if (!from || !to) return 'Selecciona fecha de inicio y fin.';
-  if (to < from) return 'La fecha fin no puede ser anterior a la fecha inicio.';
+  if (!from || !to) return tr('reportes.rango_incompleto');
+  if (to < from) return tr('reportes.rango_invertido');
   const days = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
-  if (days > MAX_RANGE_DAYS) return `El rango no puede superar ${MAX_RANGE_DAYS} días. Reduce el período seleccionado.`;
+  if (days > MAX_RANGE_DAYS) return tr('reportes.rango_muy_largo', { max: MAX_RANGE_DAYS });
   return null;
 };
 
@@ -55,11 +41,11 @@ export const ReportesTab: React.FC = () => {
   useEffect(() => {
     medicalServicesApi.list()
       .then(setServices)
-      .catch((e: unknown) => setQueryError(`Error al cargar servicios: ${getErrorMessage(e)}`));
+      .catch((e: unknown) => setQueryError(tr('common.error_cargar_servicios_error', { error: getErrorMessage(e) })));
   }, []);
 
   const serviceOptions = [
-    { value: '', label: 'Todos los servicios' },
+    { value: '', label: tr('common.todos_los_servicios') },
     ...services.map(s => ({ value: s.id, label: s.name })),
   ];
 
@@ -81,7 +67,7 @@ export const ReportesTab: React.FC = () => {
       setRows(Array.isArray(result) ? result : []);
       setSearched(true);
     } catch (e: unknown) {
-      setQueryError(getErrorMessage(e) || 'Error al generar el reporte. Intenta de nuevo.');
+      setQueryError(getErrorMessage(e) || tr('reportes.error_generar'));
     } finally { setLoading(false); }
   };
 
@@ -93,48 +79,48 @@ export const ReportesTab: React.FC = () => {
     try {
       await reportsApi.downloadCsv(buildParams());
     } catch (e: unknown) {
-      setQueryError(getErrorMessage(e) || 'Error al exportar el CSV.');
+      setQueryError(getErrorMessage(e) || tr('reportes.error_exportar'));
     } finally { setLoading(false); }
   };
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader title="Filtros de Exportación y Análisis" />
+        <CardHeader title={tr('reportes.filtros_exportacion_y_analisis')} />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <DatePicker
-            label="Fecha inicio"
+            label={tr('reportes.fecha_inicio')}
             value={fechaInicio}
             onChange={setFechaInicio}
             max={fechaFin || undefined}
             fullWidth
           />
           <DatePicker
-            label="Fecha fin"
+            label={tr('reportes.fecha_fin')}
             value={fechaFin}
             onChange={setFechaFin}
             min={fechaInicio || undefined}
             fullWidth
           />
           <Select
-            label="Servicio"
+            label={tr('common.servicio')}
             value={servicio}
             onChange={setServicio}
             options={serviceOptions}
             fullWidth
           />
           <Select
-            label="Prioridad"
+            label={tr('common.prioridad')}
             value={prioridad}
             onChange={setPrioridad}
-            options={PRIORITY_OPTIONS}
+            options={withEmpty(tr('common.todas'), priorityOptions())}
             fullWidth
           />
           <Select
-            label="Canal"
+            label={tr('common.canal')}
             value={canal}
             onChange={setCanal}
-            options={CHANNEL_OPTIONS}
+            options={withEmpty(tr('reportes.todos_los_canales'), channelOptions())}
             fullWidth
           />
         </div>
@@ -143,10 +129,10 @@ export const ReportesTab: React.FC = () => {
             variant="secondary" size="sm" icon={<Download className="w-4 h-4" />}
             loading={loading} onClick={downloadCsv}
           >
-            Exportar CSV
+            {tr('reportes.exportar_csv')}
           </Button>
           <Button size="sm" loading={loading} onClick={runQuery}>
-            Buscar
+            {tr('reportes.buscar')}
           </Button>
         </CardFooter>
       </Card>
@@ -170,14 +156,14 @@ export const ReportesTab: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-surface-100">
-                <TH>Ticket</TH>
-                <TH>Servicio</TH>
-                <TH>Estado</TH>
-                <TH>Prioridad</TH>
-                <TH>Canal</TH>
-                <TH className="text-right">T. Espera</TH>
-                <TH className="text-right">T. Atención</TH>
-                <TH>Fecha</TH>
+                <TH>{tr('common.ticket')}</TH>
+                <TH>{tr('common.servicio')}</TH>
+                <TH>{tr('common.estado')}</TH>
+                <TH>{tr('common.prioridad')}</TH>
+                <TH>{tr('common.canal')}</TH>
+                <TH className="text-right">{tr('reportes.t_espera')}</TH>
+                <TH className="text-right">{tr('reportes.t_atencion')}</TH>
+                <TH>{tr('common.fecha')}</TH>
               </tr>
             </thead>
             <tbody>
@@ -185,16 +171,9 @@ export const ReportesTab: React.FC = () => {
                 <tr key={i} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
                   <TD><code className="font-mono font-bold text-primary-700 text-xs">{row.ticketCode}</code></TD>
                   <TD className="text-surface-700">{row.medicalServiceName}</TD>
-                  <TD className="font-medium text-surface-700">{STATUS_LABELS[row.status] ?? row.status}</TD>
-                  <TD>
-                    {row.priorityLevel === 'URGENT'
-                      ? <Badge variant="danger">Urgente</Badge>
-                      : row.priorityLevel === 'PREFERENTIAL'
-                        ? <Badge variant="warning">Preferencial</Badge>
-                        : <Badge variant="primary">Normal</Badge>
-                    }
-                  </TD>
-                  <TD className="text-surface-600">{CHANNEL_LABELS[row.channel] ?? row.channel}</TD>
+                  <TD className="font-medium text-surface-700">{statusLabel(row.status)}</TD>
+                  <TD><PriorityBadge priority={row.priorityLevel} /></TD>
+                  <TD className="text-surface-600">{channelLabel(row.channel)}</TD>
                   <TD className="text-right font-mono text-amber-700">{fmtSeconds(row.waitTimeSeconds)}</TD>
                   <TD className="text-right font-mono text-green-700">{fmtSeconds(row.attentionTimeSeconds)}</TD>
                   <TD className="text-surface-500 text-xs">{row.reportDate}</TD>
@@ -203,9 +182,7 @@ export const ReportesTab: React.FC = () => {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-surface-400 text-sm">
-                    {searched
-                      ? 'No hay tickets para los filtros seleccionados.'
-                      : 'Aplica filtros y presiona Buscar para ver resultados'}
+                    {searched ? tr('reportes.sin_resultados') : tr('reportes.aplica_filtros')}
                   </td>
                 </tr>
               )}

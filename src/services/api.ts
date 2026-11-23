@@ -1,12 +1,14 @@
 import type {
   Appointment, AppointmentIngestRequest, CallNextRequest, CircuitBreakerStatus, CompleteAttentionRequest,
-  ConsultingRoom, ConsultingRoomRequest, DashboardReport, DispenseTicketRequest, Doctor, DoctorRequest,
+  ConsultingRoom, ConsultingRoomRequest, DashboardReport, DeviceAuditEntry, DevicePairResult, DeviceProfile, DeviceProfileRequest, DeviceStatus, DeviceType, DeviceUnlockResult,
+  DispenseTicketRequest, Doctor, DoctorRequest,
   DoctorStatus, Empty, EvaluateRequest, EvaluationResult, ISODate, LoginRequest, LoginResponse, MedicalService,
   MedicalServiceRequest, OfflineSyncItem, PageResponse, Patient, PatientRequest, PriorityLevel, PriorityRule,
   PriorityRuleRequest, ReportFilterParams, Specialty, SpecialtyRequest, SyncNowResponse, Ticket,
   TicketReportRow, UUID, User, UserGroup, UserGroupMembership, UserGroupRequest, CreateUserRequest,
   UpdateUserRequest,
 } from '../types/api';
+import { tr, translateApiMessage } from '../i18n';
 
 const BASE_URL = '/api';
 
@@ -20,7 +22,7 @@ export class ApiError extends Error {
 }
 
 /** Extrae un mensaje legible de cualquier valor capturado en un `catch`. */
-export const getErrorMessage = (e: unknown, fallback = 'Error inesperado'): string =>
+export const getErrorMessage = (e: unknown, fallback = tr('errors.unexpected')): string =>
   e instanceof Error ? e.message : typeof e === 'string' ? e : fallback;
 
 // C-03: dispatch event on 401 only when a session existed (token present) — avoids
@@ -84,20 +86,27 @@ const authHeaders = (withJson: boolean): Record<string, string> => {
 const ensureOk = async (res: Response): Promise<void> => {
   if (res.status === 401) {
     dispatch401();
-    throw new ApiError('Sesión expirada. Vuelve a iniciar sesión.', 401);
+    throw new ApiError(tr('errors.session_expired'), 401);
   }
   if (!res.ok) {
     const errData = await res.json().catch(() => null) as ErrorBody | null;
-    throw new ApiError(extractErrorMessage(errData) || res.statusText || 'Error en la petición', res.status);
+    throw new ApiError(translateApiMessage(extractErrorMessage(errData), res.status), res.status);
   }
 };
 
-async function request<T>(method: Method, endpoint: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${endpoint}`, {
-    method,
-    headers: authHeaders(method !== 'DELETE'),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+async function request<T>(
+  method: Method, endpoint: string, body?: unknown, extraHeaders?: Record<string, string>,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${endpoint}`, {
+      method,
+      headers: { ...authHeaders(method !== 'DELETE'), ...(extraHeaders ?? {}) },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError(tr('errors.network'), 0);
+  }
   await ensureOk(res);
   // 204 No Content / cuerpo vacío → objeto vacío
   const text = await res.text();
@@ -111,12 +120,15 @@ export const api = {
   put:    <T>(endpoint: string, body?: unknown)   => request<T>('PUT', endpoint, body),
   patch:  <T>(endpoint: string, body?: unknown)   => request<T>('PATCH', endpoint, body),
   delete: <T = Empty>(endpoint: string)           => request<T>('DELETE', endpoint),
+  /** Variante con cabeceras extra (p. ej. el token de desbloqueo de dispositivos). */
+  withHeaders: <T>(method: Method, endpoint: string, headers: Record<string, string>, body?: unknown) =>
+    request<T>(method, endpoint, body, headers),
 
   // C-04: auth-aware CSV download — never exposes the token in a URL
   async downloadCsv(endpoint: string, filename: string): Promise<void> {
     const res = await fetch(`${BASE_URL}${endpoint}`, { headers: authHeaders(false) });
-    if (res.status === 401) { dispatch401(); throw new ApiError('Sesión expirada. Vuelve a iniciar sesión.', 401); }
-    if (!res.ok) throw new ApiError('Error al descargar archivo', res.status);
+    if (res.status === 401) { dispatch401(); throw new ApiError(tr('errors.session_expired'), 401); }
+    if (!res.ok) throw new ApiError(tr('errors.download'), res.status);
     downloadBlob(await res.blob(), filename);
   },
 };
@@ -130,8 +142,15 @@ export const authApi = {
   me:    () => api.get<User>('/auth/me'),
 };
 
+/** `&serviceIds=a&serviceIds=b` (vacío = sin filtro: todos los servicios). */
+const serviceIdsQuery = (ids: UUID[]): string => ids.map(id => `&serviceIds=${encodeURIComponent(id)}`).join('');
+
 export const ticketsApi = {
-  dispense:  (body: DispenseTicketRequest) => api.post<Ticket>('/tickets/dispense', body),
+  /** `deviceToken`: token del kiosko vinculado (el servidor lo exige cuando existen perfiles de kiosko). */
+  dispense:  (body: DispenseTicketRequest, deviceToken?: string | null) =>
+    deviceToken
+      ? api.withHeaders<Ticket>('POST', '/tickets/dispense', { 'X-Device-Token': deviceToken }, body)
+      : api.post<Ticket>('/tickets/dispense', body),
   callNext:  (body: CallNextRequest)       => api.post<Ticket>('/tickets/call-next', body),
   recall:           (id: UUID) => api.post<Ticket>(`/tickets/${id}/recall`),
   startAttention:   (id: UUID) => api.post<Ticket>(`/tickets/${id}/start-attention`),
@@ -145,14 +164,16 @@ export const ticketsApi = {
   },
   deriveTicket: (id: UUID, targetServiceId: UUID) =>
     api.post<Ticket>(`/tickets/${id}/derive`, { targetServiceId }),
-  lastCalled:   (limit = 6)  => api.get<Ticket[]>(`/tickets/last-called?limit=${limit}`),
+  lastCalled:   (limit = 6, serviceIds: UUID[] = []) =>
+    api.get<Ticket[]>(`/tickets/last-called?limit=${limit}${serviceIdsQuery(serviceIds)}`),
   activeQueue:  (serviceId: UUID) => api.get<Ticket[]>(`/tickets/active-queue?serviceId=${serviceId}`),
   /** Ticket activo del consultorio, o null si no hay (el backend responde cuerpo vacío). */
   currentRoom:  async (consultingRoomId: UUID): Promise<Ticket | null> => {
     const t = await api.get<Ticket | Empty>(`/tickets/current-room?consultingRoomId=${consultingRoomId}`);
     return 'ticketCode' in t ? (t as Ticket) : null;
   },
-  waitingQueue: (limit = 20) => api.get<Ticket[]>(`/tickets/waiting?limit=${limit}`),
+  waitingQueue: (limit = 20, serviceIds: UUID[] = []) =>
+    api.get<Ticket[]>(`/tickets/waiting?limit=${limit}${serviceIdsQuery(serviceIds)}`),
   adminList: (date?: ISODate, page = 0, size = 50) => {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (date) params.set('date', date);
@@ -226,6 +247,29 @@ export const consultingRoomsApi = {
   toggleActive: (id: UUID) => api.patch<ConsultingRoom>(`/consulting-rooms/${id}/toggle`),
 };
 
+const DEVICE_TOKEN_HEADER = 'X-Device-Token';
+
+export const devicesApi = {
+  // Públicos (los usa el propio dispositivo)
+  status:  () => api.get<DeviceStatus>('/devices/status'),
+  unlock:  (pin: string) => api.post<DeviceUnlockResult>('/devices/unlock', { pin }),
+  available: (token: string, type: DeviceType) =>
+    api.withHeaders<DeviceProfile[]>('GET', `/devices/available-profiles?type=${type}`, { [DEVICE_TOKEN_HEADER]: token }),
+  pair: (unlockToken: string, profileId: UUID) =>
+    api.withHeaders<DevicePairResult>('POST', '/devices/pair', { [DEVICE_TOKEN_HEADER]: unlockToken }, { profileId }),
+  /** Perfil del equipo según su token (devuelve además un token renovado). */
+  config:  (deviceToken: string) =>
+    api.withHeaders<DevicePairResult>('GET', '/devices/config', { [DEVICE_TOKEN_HEADER]: deviceToken }),
+  // Administración
+  profiles: () => api.get<DeviceProfile[]>('/devices/profiles'),
+  create:   (body: DeviceProfileRequest) => api.post<DeviceProfile>('/devices/profiles', body),
+  update:   (id: UUID, body: DeviceProfileRequest) => api.put<DeviceProfile>(`/devices/profiles/${id}`, body),
+  remove:   (id: UUID) => api.delete(`/devices/profiles/${id}`),
+  setPin:   (pin: string) => api.put<Empty>('/devices/pin', { pin }),
+  resetLock: () => api.post<Empty>('/devices/lock/reset'),
+  audit:    (limit = 50) => api.get<DeviceAuditEntry[]>(`/devices/audit?limit=${limit}`),
+};
+
 export const userGroupsApi = {
   list:         () => api.get<UserGroup[]>('/user-groups'),
   memberships:  () => api.get<UserGroupMembership[]>('/user-groups/memberships'),
@@ -233,6 +277,8 @@ export const userGroupsApi = {
   update:       (id: UUID, body: UserGroupRequest) => api.put<UserGroup>(`/user-groups/${id}`, body),
   toggleActive: (id: UUID) => api.patch<UserGroup>(`/user-groups/${id}/toggle`),
   remove:       (id: UUID) => api.delete(`/user-groups/${id}`),
+  /** Reemplaza los servicios que atiende el grupo. */
+  setServices:  (id: UUID, serviceIds: UUID[]) => api.put<UserGroup>(`/user-groups/${id}/services`, { serviceIds }),
   members:      (id: UUID) => api.get<User[]>(`/user-groups/${id}/members`),
   addMember:    (id: UUID, userId: UUID) => api.put<Empty>(`/user-groups/${id}/members/${userId}`),
   removeMember: (id: UUID, userId: UUID) => api.delete(`/user-groups/${id}/members/${userId}`),

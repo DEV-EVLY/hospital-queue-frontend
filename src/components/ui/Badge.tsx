@@ -1,6 +1,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import type { TicketStatus, PriorityLevel } from '../../types/api';
+import { statusLabel, priorityLabel } from '../../i18n';
 
 type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'purple' | 'gray';
 type BadgeSize    = 'sm' | 'md';
@@ -47,30 +48,21 @@ export const Badge = ({ children, variant = 'default', size = 'sm', dot, classNa
 
 // ─── Semantic badge for ticket status ────────────────────────────────────────
 
-const STATUS_CONFIG: Record<TicketStatus, { label: string; variant: BadgeVariant }> = {
-  WAITING:      { label: 'En espera',   variant: 'warning' },
-  CALLED:       { label: 'Llamado',     variant: 'primary' },
-  IN_ATTENTION: { label: 'En atención', variant: 'success' },
-  ATTENDED:     { label: 'Atendido',    variant: 'gray'    },
-  NOT_ATTENDED: { label: 'Ausente',     variant: 'danger'  },
-  REFERRED:     { label: 'Derivado',    variant: 'purple'  },
-  CANCELLED:    { label: 'Cancelado',   variant: 'gray'    },
+const STATUS_VARIANT: Record<TicketStatus, BadgeVariant> = {
+  WAITING: 'warning', CALLED: 'primary', IN_ATTENTION: 'success', ATTENDED: 'gray',
+  NOT_ATTENDED: 'danger', REFERRED: 'purple', CANCELLED: 'gray',
 };
 
 export const StatusBadge = ({ status, size }: { status: TicketStatus; size?: BadgeSize }) => {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, variant: 'default' as BadgeVariant };
-  return <Badge variant={cfg.variant} size={size} dot>{cfg.label}</Badge>;
+  return <Badge variant={STATUS_VARIANT[status] ?? 'default'} size={size} dot>{statusLabel(status)}</Badge>;
 };
 
 // ─── Semantic badge for priority ─────────────────────────────────────────────
 
-const PRIORITY_CONFIG: Record<PriorityLevel, { label: string; variant: BadgeVariant }> = {
-  URGENT:       { label: 'Urgente',      variant: 'danger'  },
-  PREFERENTIAL: { label: 'Preferencial', variant: 'warning' },
-  NORMAL:       { label: 'Normal',       variant: 'primary' },
+const PRIORITY_VARIANT: Record<PriorityLevel, BadgeVariant> = {
+  URGENT: 'danger', PREFERENTIAL: 'warning', NORMAL: 'primary',
 };
 
 export const PriorityBadge = ({ priority, size }: { priority: PriorityLevel; size?: BadgeSize }) => {
-  const cfg = PRIORITY_CONFIG[priority] ?? { label: priority, variant: 'default' as BadgeVariant };
-  return <Badge variant={cfg.variant} size={size}>{cfg.label}</Badge>;
+  return <Badge variant={PRIORITY_VARIANT[priority] ?? 'default'} size={size}>{priorityLabel(priority)}</Badge>;
 };

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, XCircle, ArrowUpDown } from 'lucide-react';
-import { Card, Badge, Button, Modal, Select, Spinner, DatePicker, Pagination } from '../../ui';
+import { Card, PriorityBadge, Button, Modal, Select, Spinner, DatePicker, Pagination } from '../../ui';
 import type { SelectOption } from '../../ui';
 import { ticketsApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
-import { FormError, TH, TD, STATUS_LABELS, CHANNEL_LABELS } from './_shared';
+import { FormError, TH, TD } from './_shared';
 import type { Ticket, MedicalService, PriorityLevel, TicketStatus } from '../../../types/api';
+import { tr, statusLabel, channelLabel, statusOptions, priorityOptions, withEmpty, formatTime } from '../../../i18n';
 
 // Local calendar day (toISOString would give the UTC day, wrong after 19:00 in Lima)
 const today = () => {
@@ -12,28 +13,9 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const PRIORITY_OPTIONS: SelectOption<PriorityLevel | ''>[] = [
-  { value: '', label: 'Todas las prioridades' },
-  { value: 'URGENT',       label: 'Urgente' },
-  { value: 'PREFERENTIAL', label: 'Preferencial' },
-  { value: 'NORMAL',       label: 'Normal' },
-];
-
-const STATUS_OPTIONS: SelectOption<TicketStatus | ''>[] = [
-  { value: '',            label: 'Todos los estados' },
-  { value: 'WAITING',     label: 'En Espera' },
-  { value: 'CALLED',      label: 'Llamado' },
-  { value: 'IN_ATTENTION', label: 'En Atención' },
-  { value: 'ATTENDED',    label: 'Atendido' },
-  { value: 'NOT_ATTENDED', label: 'No Presentado' },
-  { value: 'REFERRED',    label: 'Derivado' },
-  { value: 'CANCELLED',   label: 'Cancelado' },
-];
-
 const ACTIVE_STATUSES = new Set(['WAITING', 'CALLED', 'IN_ATTENTION']);
 
-const fmtTime = (iso?: string) =>
-  iso ? new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—';
+const fmtTime = (iso?: string | null) => formatTime(iso);
 
 const PAGE_SIZE = 50;
 
@@ -60,14 +42,14 @@ export const TicketsAdminTab: React.FC = () => {
       setTotalElements(data.totalElements ?? 0);
       setTotalPages(data.totalPages ?? 0);
     }
-    catch (e: unknown) { setError(`Error al cargar tickets: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setError(tr('tickets.error_cargar_tickets_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     medicalServicesApi.list()
       .then(setServices)
-      .catch((e: unknown) => setError(`Error al cargar servicios: ${getErrorMessage(e)}`));
+      .catch((e: unknown) => setError(tr('common.error_cargar_servicios_error', { error: getErrorMessage(e) })));
   }, []);
 
   useEffect(() => { loadTickets(date, page); }, [date, page, loadTickets]);
@@ -83,7 +65,7 @@ export const TicketsAdminTab: React.FC = () => {
     try {
       const updated = await ticketsApi.cancel(t.id);
       setTickets(prev => prev.map(x => x.id === t.id ? updated : x));
-    } catch (e: unknown) { setError(`No se pudo cancelar: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('tickets.no_se_pudo_cancelar_error', { error: getErrorMessage(e) })); }
   };
 
   const handleReprioritize = async () => {
@@ -93,11 +75,11 @@ export const TicketsAdminTab: React.FC = () => {
       const updated = await ticketsApi.reprioritize(reprioTarget.id, newPriority);
       setTickets(prev => prev.map(x => x.id === reprioTarget.id ? updated : x));
       setReprioTarget(null);
-    } catch (e: unknown) { setError(`No se pudo repriorizar: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('tickets.no_se_pudo_repriorizar_error', { error: getErrorMessage(e) })); }
   };
 
   const serviceOptions = [
-    { value: '', label: 'Todos los servicios' },
+    { value: '', label: tr('common.todos_los_servicios') },
     ...services.map(s => ({ value: s.id, label: s.name })),
   ];
 
@@ -107,13 +89,13 @@ export const TicketsAdminTab: React.FC = () => {
     <div className="space-y-6">
       <Card>
         <div className="flex flex-wrap items-end gap-4">
-          <DatePicker label="Fecha" value={date} onChange={d => { setDate(d); setPage(0); }} max={today()} />
-          <Select label="Servicio"  value={filterService}  onChange={setFilterService}  options={serviceOptions}  />
-          <Select label="Estado"    value={filterStatus}   onChange={setFilterStatus}   options={STATUS_OPTIONS}  />
-          <Select label="Prioridad" value={filterPriority} onChange={setFilterPriority} options={PRIORITY_OPTIONS} />
+          <DatePicker label={tr('common.fecha')} value={date} onChange={d => { setDate(d); setPage(0); }} max={today()} />
+          <Select label={tr('common.servicio')}  value={filterService}  onChange={setFilterService}  options={serviceOptions}  />
+          <Select label={tr('common.estado')}    value={filterStatus}   onChange={setFilterStatus}   options={withEmpty(tr('tickets.todos_los_estados'), statusOptions())}  />
+          <Select label={tr('common.prioridad')} value={filterPriority} onChange={setFilterPriority} options={withEmpty(tr('tickets.todas_las_prioridades'), priorityOptions())} />
           <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} loading={loading}
             onClick={() => loadTickets(date, page)} className="mb-0.5">
-            Actualizar
+            {tr('common.actualizar')}
           </Button>
         </div>
       </Card>
@@ -123,9 +105,9 @@ export const TicketsAdminTab: React.FC = () => {
       <Card padding="none">
         <div className="px-6 pt-5 pb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-surface-900">
-            Tickets del {date}
+            {tr('tickets.tickets_del', { date })}
             <span className="ml-2 text-xs font-normal text-surface-500">
-              ({filtered.length} en esta página · {totalElements} total)
+              {tr('tickets.resumen_pagina', { page: filtered.length, total: totalElements })}
             </span>
           </h3>
           {loading && <Spinner />}
@@ -134,13 +116,13 @@ export const TicketsAdminTab: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-surface-100">
-                <TH>Ticket</TH>
-                <TH>Servicio</TH>
-                <TH>Estado</TH>
-                <TH>Prioridad</TH>
-                <TH>Canal</TH>
-                <TH>Emisión</TH>
-                <TH className="text-right">Acciones</TH>
+                <TH>{tr('common.ticket')}</TH>
+                <TH>{tr('common.servicio')}</TH>
+                <TH>{tr('common.estado')}</TH>
+                <TH>{tr('common.prioridad')}</TH>
+                <TH>{tr('common.canal')}</TH>
+                <TH>{tr('tickets.emision')}</TH>
+                <TH className="text-right">{tr('common.acciones')}</TH>
               </tr>
             </thead>
             <tbody>
@@ -151,31 +133,24 @@ export const TicketsAdminTab: React.FC = () => {
                   </TD>
                   <TD className="text-surface-700">{serviceName(t.medicalServiceId)}</TD>
                   <TD className="font-medium text-surface-700">
-                    {STATUS_LABELS[t.status] ?? t.status}
+                    {statusLabel(t.status)}
                   </TD>
-                  <TD>
-                    {t.priorityLevel === 'URGENT'
-                      ? <Badge variant="danger">Urgente</Badge>
-                      : t.priorityLevel === 'PREFERENTIAL'
-                        ? <Badge variant="warning">Preferencial</Badge>
-                        : <Badge variant="primary">Normal</Badge>
-                    }
-                  </TD>
-                  <TD className="text-surface-600">{CHANNEL_LABELS[t.channel] ?? t.channel}</TD>
+                  <TD><PriorityBadge priority={t.priorityLevel} /></TD>
+                  <TD className="text-surface-600">{channelLabel(t.channel)}</TD>
                   <TD className="font-mono text-xs text-surface-500">{fmtTime(t.issuedAt)}</TD>
                   <TD className="text-right">
                     {ACTIVE_STATUSES.has(t.status) && (
                       <div className="flex gap-1 justify-end">
                         <button
                           onClick={() => { setReprioTarget(t); setNewPriority(t.priorityLevel || 'NORMAL'); }}
-                          title="Cambiar prioridad"
+                          title={tr('tickets.cambiar_prioridad')}
                           className="p-1.5 rounded-lg text-surface-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                         >
                           <ArrowUpDown className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleCancel(t)}
-                          title="Cancelar ticket"
+                          title={tr('tickets.cancelar_ticket')}
                           className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                           <XCircle className="w-4 h-4" />
@@ -188,7 +163,7 @@ export const TicketsAdminTab: React.FC = () => {
               {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-surface-400 text-sm">
-                    No hay tickets para los filtros seleccionados.
+                    {tr('tickets.no_hay_tickets_para_filtros')}
                   </td>
                 </tr>
               )}
@@ -209,25 +184,21 @@ export const TicketsAdminTab: React.FC = () => {
       <Modal
         open={!!reprioTarget}
         onClose={() => setReprioTarget(null)}
-        title="Cambiar Prioridad"
+        title={tr('tickets.cambiar_prioridad_2')}
         description={`Ticket: ${reprioTarget?.ticketCode}`}
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setReprioTarget(null)}>Cancelar</Button>
-            <Button onClick={handleReprioritize}>Aplicar</Button>
+            <Button variant="secondary" onClick={() => setReprioTarget(null)}>{tr('common.cancelar')}</Button>
+            <Button onClick={handleReprioritize}>{tr('tickets.aplicar')}</Button>
           </>
         }
       >
         <Select
-          label="Nueva prioridad"
+          label={tr('tickets.nueva_prioridad')}
           value={newPriority}
           onChange={setNewPriority}
-          options={[
-            { value: 'URGENT',       label: 'Urgente' },
-            { value: 'PREFERENTIAL', label: 'Preferencial' },
-            { value: 'NORMAL',       label: 'Normal' },
-          ]}
+          options={priorityOptions()}
           fullWidth
         />
       </Modal>

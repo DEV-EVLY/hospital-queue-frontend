@@ -5,6 +5,7 @@ import { patientsApi, getErrorMessage } from '../../../services/api';
 import type { SelectOption } from '../../ui';
 import { FormError, TH, TD, normalizePhone, phoneError } from './_shared';
 import type { Patient, PatientRequest, DocumentType, Gender } from '../../../types/api';
+import { tr, docTypeOptions, genderOptions, withEmpty, trp } from '../../../i18n';
 
 interface PatientForm {
   documentType: DocumentType; documentNumber: string; firstName: string; lastName: string;
@@ -13,20 +14,6 @@ interface PatientForm {
 }
 
 type PatientFlag = 'isPregnant' | 'hasDisability' | 'active';
-
-const DOC_TYPES: SelectOption<DocumentType>[] = [
-  { value: 'DNI', label: 'DNI' },
-  { value: 'FOREIGN_ID', label: 'Carné de Extranjería' },
-  { value: 'PASSPORT', label: 'Pasaporte' },
-  { value: 'OTHER', label: 'Otro' },
-];
-
-const GENDER_OPTIONS: SelectOption<Gender | ''>[] = [
-  { value: '', label: 'No especificado' },
-  { value: 'MALE', label: 'Masculino' },
-  { value: 'FEMALE', label: 'Femenino' },
-  { value: 'OTHER', label: 'Otro' },
-];
 
 const BLANK: PatientForm = {
   documentType: 'DNI', documentNumber: '', firstName: '', lastName: '',
@@ -71,7 +58,7 @@ export const PacientesTab: React.FC = () => {
       setTotalElements(data.totalElements ?? 0);
       setTotalPages(data.totalPages ?? 0);
     }
-    catch (e: unknown) { setError(`Error al cargar pacientes: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setError(tr('pacientes.error_cargar_pacientes_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -110,7 +97,7 @@ export const PacientesTab: React.FC = () => {
 
   const save = async () => {
     if (!form.documentNumber || !form.firstName || !form.lastName) {
-      setError('Número de documento, nombres y apellidos son obligatorios.'); return;
+      setError(tr('pacientes.numero_documento_nombres_y_apellidos')); return;
     }
     const phoneProblem = phoneError(form.phone);
     if (phoneProblem) { setError(phoneProblem); return; }
@@ -136,7 +123,7 @@ export const PacientesTab: React.FC = () => {
         isPregnant: p.isPregnant, hasDisability: p.hasDisability, active: !p.active,
       }));
       setPatients(prev => prev.map(x => x.id === p.id ? updated : x));
-    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('common.error_error', { error: getErrorMessage(e) })); }
   };
 
   return (
@@ -144,21 +131,21 @@ export const PacientesTab: React.FC = () => {
       <Card padding="none">
         <div className="px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3 border-b border-surface-100">
           <div>
-            <h3 className="text-sm font-semibold text-surface-900">Pacientes Registrados</h3>
-            <p className="text-xs text-surface-500 mt-0.5">{totalElements} pacientes en total</p>
+            <h3 className="text-sm font-semibold text-surface-900">{tr('pacientes.pacientes_registrados')}</h3>
+            <p className="text-xs text-surface-500 mt-0.5">{trp('pacientes.total_pacientes', totalElements)}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Input
-              placeholder="Buscar por nombre o documento..."
+              placeholder={tr('pacientes.buscar_por_nombre_o_documento')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-64"
             />
             <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} loading={loading} onClick={() => load(page)}>
-              Recargar
+              {tr('common.recargar')}
             </Button>
             <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
-              Nuevo
+              {tr('common.nuevo')}
             </Button>
           </div>
         </div>
@@ -169,12 +156,12 @@ export const PacientesTab: React.FC = () => {
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-surface-100">
-                <TH>Paciente</TH>
-                <TH>Documento</TH>
-                <TH>Contacto</TH>
-                <TH>Flags</TH>
-                <TH>Estado</TH>
-                <TH className="text-right">Acciones</TH>
+                <TH>{tr('pacientes.paciente')}</TH>
+                <TH>{tr('pacientes.documento')}</TH>
+                <TH>{tr('common.contacto')}</TH>
+                <TH>{tr('pacientes.flags')}</TH>
+                <TH>{tr('common.estado')}</TH>
+                <TH className="text-right">{tr('common.acciones')}</TH>
               </tr>
             </thead>
             <tbody>
@@ -197,16 +184,16 @@ export const PacientesTab: React.FC = () => {
                   </TD>
                   <TD>
                     <div className="flex gap-1 flex-wrap">
-                      {p.isPregnant    && <Badge variant="warning">Gestante</Badge>}
-                      {p.isElderly     && <Badge variant="primary">Adulto Mayor</Badge>}
-                      {p.hasDisability && <Badge variant="danger">Discap.</Badge>}
+                      {p.isPregnant    && <Badge variant="warning">{tr('pacientes.gestante')}</Badge>}
+                      {p.isElderly     && <Badge variant="primary">{tr('common.adulto_mayor')}</Badge>}
+                      {p.hasDisability && <Badge variant="danger">{tr('pacientes.discap')}</Badge>}
                     </div>
                   </TD>
                   <TD>
                     <button onClick={() => toggleActive(p)}>
                       {p.active
-                        ? <Badge variant="success" dot>Activo</Badge>
-                        : <Badge variant="gray"    dot>Inactivo</Badge>}
+                        ? <Badge variant="success" dot>{tr('common.activo')}</Badge>
+                        : <Badge variant="gray"    dot>{tr('common.inactivo')}</Badge>}
                     </button>
                   </TD>
                   <TD className="text-right">
@@ -222,7 +209,7 @@ export const PacientesTab: React.FC = () => {
               {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-surface-400 text-sm">
-                    {search ? 'Sin resultados para ese criterio en esta página.' : 'No hay pacientes registrados.'}
+                    {search ? tr('pacientes.sin_resultados_pagina') : tr('pacientes.no_hay_pacientes')}
                   </td>
                 </tr>
               )}
@@ -243,49 +230,49 @@ export const PacientesTab: React.FC = () => {
       <Modal
         open={showModal}
         onClose={() => { setShowModal(false); setError(null); }}
-        title={editingId ? 'Editar Paciente' : 'Nuevo Paciente'}
+        title={editingId ? tr('pacientes.editar_paciente') : tr('pacientes.nuevo_paciente')}
         size="lg"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={save}>
-              {editingId ? 'Guardar Cambios' : 'Crear Paciente'}
+              {editingId ? tr('common.guardar_cambios') : tr('pacientes.crear_paciente')}
             </Button>
           </>
         }
       >
         <FormError msg={error} onDismiss={() => setError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Select label="Tipo de documento *" value={form.documentType}
+          <Select label={tr('pacientes.tipo_documento')} value={form.documentType}
             onChange={v => setForm(f => ({ ...f, documentType: v }))}
-            options={DOC_TYPES} fullWidth />
-          <Input label="Número de documento *" maxLength={20} placeholder="12345678"
+            options={docTypeOptions()} fullWidth />
+          <Input label={tr('pacientes.numero_documento')} maxLength={20} placeholder="12345678"
             value={form.documentNumber}
             onChange={e => setForm(f => ({ ...f, documentNumber: e.target.value }))} fullWidth />
-          <Input label="Nombres *" maxLength={100} placeholder="Juan"
+          <Input label={tr('common.nombres')} maxLength={100} placeholder={tr('pacientes.juan')}
             value={form.firstName}
             onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} fullWidth />
-          <Input label="Apellidos *" maxLength={100} placeholder="Pérez García"
+          <Input label={tr('common.apellidos')} maxLength={100} placeholder={tr('pacientes.perez_garcia')}
             value={form.lastName}
             onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} fullWidth />
-          <Input label="Fecha de nacimiento" type="date"
+          <Input label={tr('pacientes.fecha_nacimiento')} type="date"
             value={form.birthDate}
             onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))} fullWidth />
-          <Select label="Género" value={form.gender}
+          <Select label={tr('pacientes.genero')} value={form.gender}
             onChange={v => setForm(f => ({ ...f, gender: v }))}
-            options={GENDER_OPTIONS} fullWidth />
-          <Input label="Teléfono" maxLength={20} placeholder="+51 999 999 999"
+            options={withEmpty(tr('pacientes.no_especificado'), genderOptions())} fullWidth />
+          <Input label={tr('common.telefono')} maxLength={20} placeholder="+51 999 999 999"
             value={form.phone}
             onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} fullWidth />
-          <Input label="Correo electrónico" maxLength={150} type="email" placeholder="paciente@email.com"
+          <Input label={tr('common.correo_electronico')} maxLength={150} type="email" placeholder="paciente@email.com"
             value={form.email}
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))} fullWidth />
         </div>
         <div className="mt-4 flex flex-wrap gap-5 pt-3 border-t border-surface-100">
           {([
-            { key: 'isPregnant',    label: 'Gestante / Embarazada' },
-            { key: 'hasDisability', label: 'Persona con Discapacidad' },
-            ...(editingId ? [{ key: 'active', label: 'Paciente activo' }] : []),
+            { key: 'isPregnant',    label: tr('pacientes.flag_gestante') },
+            { key: 'hasDisability', label: tr('pacientes.flag_discapacidad') },
+            ...(editingId ? [{ key: 'active', label: tr('pacientes.flag_activo') }] : []),
           ] as Array<{ key: PatientFlag; label: string }>).map(({ key, label }) => (
             <label key={key} className="flex items-center gap-2 text-sm text-surface-700 cursor-pointer select-none">
               <input

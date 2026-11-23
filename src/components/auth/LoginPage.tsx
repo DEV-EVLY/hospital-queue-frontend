@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Lock, User, AlertCircle, Activity } from 'lucide-react';
-import { Button, Input, Card } from '../ui';
+import { Button, Input, Card, LanguageSelector } from '../ui';
 import { authApi, getErrorMessage, ApiError } from '../../services/api';
+import { tr } from '../../i18n';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -17,14 +18,14 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setError('Ingresa usuario y contraseña.');
+      setError(tr('login.ingresa_usuario_y_contrasena'));
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const res = await authApi.login({ username: username.trim(), password });
-      if (!res.token) throw new Error('Respuesta inválida del servidor');
+      if (!res.token) throw new Error(tr('login.respuesta_invalida'));
       localStorage.setItem('token', res.token);
       localStorage.setItem('userId', res.userId);
       onLoginSuccess();
@@ -32,8 +33,8 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
       // El backend responde 401 sin cuerpo cuando las credenciales son inválidas
       setError(
         err instanceof ApiError && err.status === 401
-          ? 'Credenciales incorrectas. Verifique usuario y contraseña.'
-          : getErrorMessage(err, 'No se pudo iniciar sesión.')
+          ? tr('errors.invalid_credentials')
+          : getErrorMessage(err, tr('login.no_se_pudo_iniciar'))
       );
     } finally {
       setLoading(false);
@@ -41,7 +42,8 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
   };
 
   return (
-    <div className="min-h-screen bg-surface-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-surface-50 flex items-center justify-center px-4 relative">
+      <div className="absolute top-4 right-4"><LanguageSelector /></div>
 
       {/* Decorative blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
@@ -60,16 +62,16 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-700 shadow-card-md mb-4">
             <Activity size={26} className="text-white" />
           </div>
-          <h1 className="text-xl font-bold text-surface-900 tracking-tight">Sistema Hospitalario</h1>
-          <p className="text-sm text-surface-500 mt-1">Ingrese sus credenciales de acceso</p>
+          <h1 className="text-xl font-bold text-surface-900 tracking-tight">{tr('common.sistema_hospitalario')}</h1>
+          <p className="text-sm text-surface-500 mt-1">{tr('login.ingrese_sus_credenciales_acceso')}</p>
         </div>
 
         <Card padding="lg">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
-              label="Usuario"
+              label={tr('common.usuario')}
               type="text"
-              placeholder="nombre.usuario"
+              placeholder={tr('login.nombre_usuario')}
               autoComplete="username"
               autoFocus
               fullWidth
@@ -80,7 +82,7 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
             />
 
             <Input
-              label="Contraseña"
+              label={tr('login.contrasena')}
               type="password"
               placeholder="••••••••"
               autoComplete="current-password"
@@ -110,13 +112,13 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
               loading={loading}
               className="mt-1"
             >
-              {loading ? 'Verificando...' : 'Ingresar'}
+              {loading ? tr('login.verificando') : tr('login.ingresar')}
             </Button>
           </form>
         </Card>
 
         <p className="text-center text-xs text-surface-400 mt-6">
-          Acceso restringido — solo personal autorizado
+          {tr('login.acceso_restringido_solo_personal_autorizad')}
         </p>
       </motion.div>
     </div>

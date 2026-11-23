@@ -6,26 +6,14 @@ import type { SelectOption } from '../../ui';
 import { doctorsApi, specialtiesApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD, normalizePhone, phoneError } from './_shared';
 import type { Doctor, Specialty, DoctorStatus, DoctorRequest } from '../../../types/api';
+import { tr, doctorStatusOptions } from '../../../i18n';
 
 interface DoctorForm { licenseNumber: string; firstName: string; lastName: string; specialtyId: string; phone: string; email: string }
 interface SpecialtyForm { code: string; name: string; description: string }
 
-const DOCTOR_STATUS_LABELS: Record<string, string> = {
-  AVAILABLE: 'Disponible', BUSY: 'Ocupado', ON_LEAVE: 'De Licencia', OFF_DUTY: 'Fuera de Turno',
-};
-const DOCTOR_STATUS_VARIANT: Record<string, 'success' | 'warning' | 'primary' | 'gray'> = {
-  AVAILABLE: 'success', BUSY: 'warning', ON_LEAVE: 'primary', OFF_DUTY: 'gray',
-};
-const STATUS_OPTIONS: SelectOption<DoctorStatus>[] = [
-  { value: 'AVAILABLE', label: 'Disponible' },
-  { value: 'BUSY',      label: 'Ocupado' },
-  { value: 'ON_LEAVE',  label: 'De Licencia' },
-  { value: 'OFF_DUTY',  label: 'Fuera de Turno' },
-];
-
-const MEDICOS_TABS = [
-  { key: 'MEDICOS',       label: 'Médicos',       icon: <UserRound  className="w-4 h-4" /> },
-  { key: 'ESPECIALIDADES', label: 'Especialidades', icon: <Stethoscope className="w-4 h-4" /> },
+const medicosTabs = () => [
+  { key: 'MEDICOS',        label: tr('medicos.medicos'),        icon: <UserRound   className="w-4 h-4" /> },
+  { key: 'ESPECIALIDADES', label: tr('medicos.especialidades'), icon: <Stethoscope className="w-4 h-4" /> },
 ];
 
 const BLANK_DOCTOR: DoctorForm = { licenseNumber: '', firstName: '', lastName: '', specialtyId: '', phone: '', email: '' };
@@ -61,7 +49,7 @@ export const MedicosTab: React.FC = () => {
       setDoctors(data.content ?? []);
       setDocTotal(data.totalElements ?? 0);
       setDocTotalPages(data.totalPages ?? 0);
-    } catch (e: unknown) { setError(`Error al cargar médicos: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('medicos.error_cargar_medicos_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -76,7 +64,7 @@ export const MedicosTab: React.FC = () => {
       setDocTotal(data.totalElements ?? 0);
       setDocTotalPages(data.totalPages ?? 0);
       setSpecialties(s);
-    } catch (e: unknown) { setError(`Error al cargar datos: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('medicos.error_cargar_datos_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -88,7 +76,7 @@ export const MedicosTab: React.FC = () => {
   );
 
   const specialtyOptions = [
-    { value: '', label: 'Todas las especialidades' },
+    { value: '', label: tr('medicos.todas_las_especialidades') },
     ...specialties.map(s => ({ value: s.id, label: s.name })),
   ];
 
@@ -112,9 +100,9 @@ export const MedicosTab: React.FC = () => {
 
   const saveDoctor = async () => {
     if (!doctorForm.licenseNumber || !doctorForm.firstName || !doctorForm.lastName) {
-      setError('CMP, nombres y apellidos son obligatorios.'); return;
+      setError(tr('medicos.cmp_nombres_y_apellidos_son')); return;
     }
-    if (!doctorForm.specialtyId) { setError('Selecciona una especialidad.'); return; }
+    if (!doctorForm.specialtyId) { setError(tr('medicos.selecciona_especialidad_2')); return; }
     const phoneProblem = phoneError(doctorForm.phone);
     if (phoneProblem) { setError(phoneProblem); return; }
     setError(null);
@@ -143,25 +131,25 @@ export const MedicosTab: React.FC = () => {
     try {
       const updated = await doctorsApi.updateStatus(doctor.id, status);
       setDoctors(prev => prev.map(d => d.id === doctor.id ? updated : d));
-    } catch (e: unknown) { setError(`Error al cambiar estado: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('medicos.error_cambiar_estado_error', { error: getErrorMessage(e) })); }
   };
 
   const toggleActive = async (doctor: Doctor) => {
-    if (!doctor.specialtyId) { setError('El médico no tiene especialidad asignada; edítalo primero.'); return; }
+    if (!doctor.specialtyId) { setError(tr('medicos.medico_no_tiene_especialidad_asignada')); return; }
     try {
       const updated = await doctorsApi.update(doctor.id, {
         licenseNumber: doctor.licenseNumber, firstName: doctor.firstName, lastName: doctor.lastName,
         specialtyId: doctor.specialtyId, phone: doctor.phone, email: doctor.email, active: !doctor.active,
       });
       setDoctors(prev => prev.map(d => d.id === doctor.id ? updated : d));
-    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('common.error_error', { error: getErrorMessage(e) })); }
   };
 
   // ── Specialty handlers ───────────────────────────────────────────────────────
 
   const saveSpecialty = async () => {
     if (!specialtyForm.code || !specialtyForm.name) {
-      setSpecialtyError('Código y nombre son obligatorios.'); return;
+      setSpecialtyError(tr('medicos.codigo_y_nombre_son_obligatorios')); return;
     }
     setSpecialtyError(null);
     try {
@@ -177,7 +165,7 @@ export const MedicosTab: React.FC = () => {
   return (
     <div className="space-y-6">
       <Tabs
-        tabs={MEDICOS_TABS}
+        tabs={medicosTabs()}
         active={subTab}
         onChange={k => setSubTab(k as 'MEDICOS' | 'ESPECIALIDADES')}
         className="w-fit"
@@ -195,17 +183,17 @@ export const MedicosTab: React.FC = () => {
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3 border-b border-surface-100">
                 <div>
-                  <h3 className="text-sm font-semibold text-surface-900">Médicos</h3>
+                  <h3 className="text-sm font-semibold text-surface-900">{tr('medicos.medicos')}</h3>
                   <p className="text-xs text-surface-500 mt-0.5">{docTotal} registrados</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Select value={filterSpecialty} onChange={setFilterSpecialty}
                     options={specialtyOptions} className="w-52" />
                   <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} loading={loading} onClick={() => loadDoctors(docPage)}>
-                    Recargar
+                    {tr('common.recargar')}
                   </Button>
                   <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreateDoctor}>
-                    Nuevo
+                    {tr('common.nuevo')}
                   </Button>
                 </div>
               </div>
@@ -214,13 +202,13 @@ export const MedicosTab: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-surface-100">
-                      <TH>Médico</TH>
+                      <TH>{tr('common.medico')}</TH>
                       <TH>CMP</TH>
-                      <TH>Especialidad</TH>
-                      <TH>Contacto</TH>
-                      <TH>Estado</TH>
-                      <TH>Activo</TH>
-                      <TH className="text-right">Acciones</TH>
+                      <TH>{tr('common.especialidad')}</TH>
+                      <TH>{tr('common.contacto')}</TH>
+                      <TH>{tr('common.estado')}</TH>
+                      <TH>{tr('common.activo')}</TH>
+                      <TH className="text-right">{tr('common.acciones')}</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -242,14 +230,14 @@ export const MedicosTab: React.FC = () => {
                           <Select
                             value={d.status || 'AVAILABLE'}
                             onChange={status => changeStatus(d, status)}
-                            options={STATUS_OPTIONS}
+                            options={doctorStatusOptions()}
                           />
                         </TD>
                         <TD>
                           <button onClick={() => toggleActive(d)}>
                             {d.active
-                              ? <Badge variant="success" dot>Sí</Badge>
-                              : <Badge variant="gray"    dot>No</Badge>}
+                              ? <Badge variant="success" dot>{tr('medicos.si')}</Badge>
+                              : <Badge variant="gray"    dot>{tr('medicos.no')}</Badge>}
                           </button>
                         </TD>
                         <TD className="text-right">
@@ -265,7 +253,7 @@ export const MedicosTab: React.FC = () => {
                     {!loading && filteredDoctors.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-surface-400 text-sm">
-                          No hay médicos registrados con los filtros seleccionados.
+                          {tr('medicos.no_hay_medicos_registrados_con')}
                         </td>
                       </tr>
                     )}
@@ -288,12 +276,12 @@ export const MedicosTab: React.FC = () => {
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
                 <div>
-                  <h3 className="text-sm font-semibold text-surface-900">Especialidades Médicas</h3>
+                  <h3 className="text-sm font-semibold text-surface-900">{tr('medicos.especialidades_medicas')}</h3>
                   <p className="text-xs text-surface-500 mt-0.5">{specialties.length} registradas</p>
                 </div>
                 <Button size="sm" icon={<Plus className="w-4 h-4" />}
                   onClick={() => { setShowNewSpecialty(true); setSpecialtyError(null); }}>
-                  Nueva Especialidad
+                  {tr('medicos.nueva_especialidad')}
                 </Button>
               </div>
               {specialtyError && <div className="px-6 pt-3"><FormError msg={specialtyError} onDismiss={() => setSpecialtyError(null)} /></div>}
@@ -301,10 +289,10 @@ export const MedicosTab: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-surface-100">
-                      <TH>Código</TH>
-                      <TH>Nombre</TH>
-                      <TH>Descripción</TH>
-                      <TH>Estado</TH>
+                      <TH>{tr('common.codigo')}</TH>
+                      <TH>{tr('common.nombre')}</TH>
+                      <TH>{tr('common.descripcion')}</TH>
+                      <TH>{tr('common.estado')}</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -315,15 +303,15 @@ export const MedicosTab: React.FC = () => {
                         <TD className="text-surface-500">{s.description || '—'}</TD>
                         <TD>
                           {s.active
-                            ? <Badge variant="success" dot>Activa</Badge>
-                            : <Badge variant="gray"    dot>Inactiva</Badge>}
+                            ? <Badge variant="success" dot>{tr('medicos.activa')}</Badge>
+                            : <Badge variant="gray"    dot>{tr('medicos.inactiva')}</Badge>}
                         </TD>
                       </tr>
                     ))}
                     {specialties.length === 0 && (
                       <tr>
                         <td colSpan={4} className="px-4 py-8 text-center text-surface-400 text-sm">
-                          No hay especialidades registradas.
+                          {tr('medicos.no_hay_especialidades_registradas')}
                         </td>
                       </tr>
                     )}
@@ -339,37 +327,37 @@ export const MedicosTab: React.FC = () => {
       <Modal
         open={showDoctorModal}
         onClose={() => { setShowDoctorModal(false); setError(null); }}
-        title={editingDoctorId ? 'Editar Médico' : 'Nuevo Médico'}
+        title={editingDoctorId ? tr('medicos.editar_medico') : tr('medicos.nuevo_medico')}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowDoctorModal(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowDoctorModal(false)}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={saveDoctor}>
-              {editingDoctorId ? 'Guardar Cambios' : 'Crear Médico'}
+              {editingDoctorId ? tr('common.guardar_cambios') : tr('medicos.crear_medico')}
             </Button>
           </>
         }
       >
         <FormError msg={error} onDismiss={() => setError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="CMP / Nro. de licencia *" maxLength={20} placeholder="CMP-12345"
+          <Input label={tr('medicos.cmp_nro_licencia')} maxLength={20} placeholder="CMP-12345"
             value={doctorForm.licenseNumber}
             onChange={e => setDoctorForm((f) => ({ ...f, licenseNumber: e.target.value }))} fullWidth />
-          <Select label="Especialidad *" value={doctorForm.specialtyId}
+          <Select label={tr('medicos.especialidad')} value={doctorForm.specialtyId}
             onChange={v => setDoctorForm((f) => ({ ...f, specialtyId: v }))}
-            placeholder="Selecciona una especialidad"
+            placeholder={tr('medicos.selecciona_especialidad')}
             options={specialties.map(s => ({ value: s.id, label: s.name }))}
             fullWidth />
-          <Input label="Nombres *" maxLength={100} placeholder="María"
+          <Input label={tr('common.nombres')} maxLength={100} placeholder={tr('medicos.maria')}
             value={doctorForm.firstName}
             onChange={e => setDoctorForm((f) => ({ ...f, firstName: e.target.value }))} fullWidth />
-          <Input label="Apellidos *" maxLength={100} placeholder="González Torres"
+          <Input label={tr('common.apellidos')} maxLength={100} placeholder={tr('medicos.gonzalez_torres')}
             value={doctorForm.lastName}
             onChange={e => setDoctorForm((f) => ({ ...f, lastName: e.target.value }))} fullWidth />
-          <Input label="Teléfono" maxLength={20} placeholder="+51 999 999 999"
+          <Input label={tr('common.telefono')} maxLength={20} placeholder="+51 999 999 999"
             value={doctorForm.phone}
             onChange={e => setDoctorForm((f) => ({ ...f, phone: e.target.value }))} fullWidth />
-          <Input label="Correo electrónico" maxLength={150} type="email" placeholder="medico@hospital.pe"
+          <Input label={tr('common.correo_electronico')} maxLength={150} type="email" placeholder="medico@hospital.pe"
             value={doctorForm.email}
             onChange={e => setDoctorForm((f) => ({ ...f, email: e.target.value }))} fullWidth />
         </div>
@@ -379,26 +367,26 @@ export const MedicosTab: React.FC = () => {
       <Modal
         open={showNewSpecialty}
         onClose={() => { setShowNewSpecialty(false); setSpecialtyError(null); }}
-        title="Nueva Especialidad"
+        title={tr('medicos.nueva_especialidad')}
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowNewSpecialty(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowNewSpecialty(false)}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={saveSpecialty}>
-              Crear Especialidad
+              {tr('medicos.crear_especialidad')}
             </Button>
           </>
         }
       >
         <FormError msg={specialtyError} onDismiss={() => setSpecialtyError(null)} />
         <div className="space-y-4">
-          <Input label="Código *" placeholder="CARD"
+          <Input label={tr('common.codigo_2')} placeholder="CARD"
             value={specialtyForm.code}
             onChange={e => setSpecialtyForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} fullWidth />
-          <Input label="Nombre *" placeholder="Cardiología"
+          <Input label={tr('common.nombre_2')} placeholder={tr('common.cardiologia')}
             value={specialtyForm.name}
             onChange={e => setSpecialtyForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
-          <Input label="Descripción" maxLength={500} placeholder="Descripción opcional"
+          <Input label={tr('common.descripcion')} maxLength={500} placeholder={tr('common.descripcion_opcional')}
             value={specialtyForm.description}
             onChange={e => setSpecialtyForm((f) => ({ ...f, description: e.target.value }))} fullWidth />
         </div>

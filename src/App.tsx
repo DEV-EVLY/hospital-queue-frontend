@@ -7,8 +7,11 @@ import { getRole } from './services/auth';
 import { KioskoDispensador }  from './components/dispensador/KioskoDispensador';
 import { ModuloOperador }     from './components/operador/ModuloOperador';
 import { PantallaCartelera }  from './components/cartelera/PantallaCartelera';
+import { DeviceGate }          from './components/device/DeviceGate';
 import { AdminDashboard }     from './components/admin/AdminDashboard';
+import { LanguageSelector } from './components/ui';
 import { LoginPage }          from './components/auth/LoginPage';
+import { tr, useLang } from './i18n';
 
 // ── Guards ────────────────────────────────────────────────────────────────────
 
@@ -28,9 +31,9 @@ function RequireAdmin() {
 // ── Staff layout (nav bar) ────────────────────────────────────────────────────
 
 const STAFF_NAV = [
-  { path: '/operador',  icon: UserCheck,   label: 'Operador' },
-  { path: '/admin',     icon: ShieldCheck, label: 'Admin' },
-];
+  { path: '/operador',  icon: UserCheck,   labelKey: 'app.nav_operador' },
+  { path: '/admin',     icon: ShieldCheck, labelKey: 'app.nav_admin' },
+] as const;
 
 function StaffLayout() {
   const navigate  = useNavigate();
@@ -65,7 +68,7 @@ function StaffLayout() {
             <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center">
               <Activity size={16} className="text-white" />
             </div>
-            <span className="font-bold text-surface-900 text-sm hidden sm:block">Sistema Hospitalario</span>
+            <span className="font-bold text-surface-900 text-sm hidden sm:block">{tr('common.sistema_hospitalario')}</span>
           </div>
 
           {/* Nav tabs */}
@@ -76,18 +79,18 @@ function StaffLayout() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none text-surface-500 hover:text-surface-700 hover:bg-surface-50"
             >
               <Monitor size={14} />
-              <span className="hidden md:block">Kiosko</span>
+              <span className="hidden md:block">{tr('common.kiosko')}</span>
             </button>
             <button
               onClick={() => window.open('/cartelera', '_blank')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none text-surface-500 hover:text-surface-700 hover:bg-surface-50"
             >
               <Tv size={14} />
-              <span className="hidden md:block">Cartelera</span>
+              <span className="hidden md:block">{tr('app.cartelera')}</span>
             </button>
 
             {/* Staff routes */}
-            {STAFF_NAV.map(({ path, icon: Icon, label }) => (
+            {STAFF_NAV.map(({ path, icon: Icon, labelKey }) => (
               <button
                 key={path}
                 onClick={() => navigate(path)}
@@ -99,30 +102,31 @@ function StaffLayout() {
                 )}
               >
                 <Icon size={14} />
-                <span className="hidden md:block">{label}</span>
+                <span className="hidden md:block">{tr(labelKey)}</span>
               </button>
             ))}
           </nav>
 
           {/* Right actions */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <LanguageSelector />
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-50 border border-surface-200">
               <Radio size={12} className="text-health-500" />
-              <span className="text-xs font-medium text-health-700 hidden sm:block">En vivo</span>
+              <span className="text-xs font-medium text-health-700 hidden sm:block">{tr('app.vivo')}</span>
             </div>
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
-              title="Cerrar sesión"
+              title={tr('app.cerrar_sesion')}
             >
               <LogOut size={14} />
-              <span className="hidden sm:block">Salir</span>
+              <span className="hidden sm:block">{tr('app.salir')}</span>
             </motion.button>
             <button
               onClick={toggleFullscreen}
               className="p-2 rounded-lg text-surface-400 hover:text-surface-700 hover:bg-surface-100 transition-colors"
-              title={fullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              title={fullscreen ? tr('app.salir_pantalla_completa') : tr('app.pantalla_completa')}
             >
               {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
@@ -140,6 +144,8 @@ function StaffLayout() {
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export const App: React.FC = () => {
+  // Suscribe toda la aplicación al idioma: al cambiarlo se vuelve a renderizar el árbol sin perder estado
+  useLang();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -171,8 +177,8 @@ export const App: React.FC = () => {
       <Route path="/" element={<Navigate to="/kiosko" replace />} />
 
       {/* Public fullscreen terminals — no nav wrapper */}
-      <Route path="/kiosko"    element={<KioskoDispensador />} />
-      <Route path="/cartelera" element={<PantallaCartelera onExitCartelera={() => {}} />} />
+      <Route path="/kiosko"    element={<DeviceGate type="KIOSK">{(p, t) => <KioskoDispensador profile={p} deviceToken={t} />}</DeviceGate>} />
+      <Route path="/cartelera" element={<DeviceGate type="DISPLAY">{p => <PantallaCartelera onExitCartelera={() => {}} profile={p} />}</DeviceGate>} />
 
       {/* Auth */}
       <Route path="/login" element={<LoginPage onLoginSuccess={handleLoginSuccess} />} />

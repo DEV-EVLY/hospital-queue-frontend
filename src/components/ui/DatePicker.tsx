@@ -2,12 +2,10 @@ import React, { useState, useRef, useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { clsx } from 'clsx';
+import { tr, formatDate, monthName, weekdayShort } from '../../i18n';
 
-const DAYS   = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-];
+/** Abreviaturas de los días (domingo primero) en el idioma actual. */
+const dayNames = () => Array.from({ length: 7 }, (_, i) => weekdayShort(i));
 
 function parseDate(value: string): Date | null {
   if (!value) return null;
@@ -18,7 +16,7 @@ function parseDate(value: string): Date | null {
 
 function formatDisplay(date: Date | null): string {
   if (!date) return '';
-  return date.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return formatDate(date, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function toISO(date: Date): string {
@@ -188,7 +186,7 @@ export const DatePicker = ({
                   transition={{ duration: 0.15 }}
                   className="text-sm font-semibold text-surface-900 select-none"
                 >
-                  {MONTHS[view.month]} {view.year}
+                  {monthName(view.month)} {view.year}
                 </motion.span>
               </AnimatePresence>
 
@@ -203,7 +201,7 @@ export const DatePicker = ({
 
             {/* Day headers */}
             <div className="grid grid-cols-7 px-3 pt-2">
-              {DAYS.map(d => (
+              {dayNames().map(d => (
                 <div key={d} className="text-center text-[10px] font-bold text-surface-400 uppercase py-1">
                   {d}
                 </div>
@@ -259,7 +257,7 @@ export const DatePicker = ({
                 onClick={() => handleSelectDay(today)}
                 className="text-xs text-primary-600 hover:text-primary-800 font-medium transition-colors"
               >
-                Hoy
+                {tr('ui.datepicker.hoy')}
               </button>
               {value && (
                 <button
@@ -267,7 +265,7 @@ export const DatePicker = ({
                   onClick={() => { onChange(''); setOpen(false); }}
                   className="text-xs text-surface-400 hover:text-red-500 font-medium transition-colors"
                 >
-                  Limpiar
+                  {tr('ui.datepicker.limpiar')}
                 </button>
               )}
             </div>

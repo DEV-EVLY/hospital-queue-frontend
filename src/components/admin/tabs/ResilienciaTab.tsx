@@ -4,6 +4,7 @@ import { Card, Button } from '../../ui';
 import { circuitBreakerApi, getErrorMessage } from '../../../services/api';
 import { FormError } from './_shared';
 import type { CircuitBreakerStatus } from '../../../types/api';
+import { tr, formatDateTime } from '../../../i18n';
 
 export const ResilienciaTab: React.FC = () => {
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus | null>(null);
@@ -30,7 +31,7 @@ export const ResilienciaTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try { await circuitBreakerApi.syncNow(); load(); } catch (e: unknown) {
-      setError(`Error al sincronizar: ${getErrorMessage(e)}`);
+      setError(tr('resiliencia.error_sincronizar_error', { error: getErrorMessage(e) }));
     } finally { setLoading(false); }
   };
 
@@ -38,7 +39,7 @@ export const ResilienciaTab: React.FC = () => {
     setLoading(true);
     setError(null);
     try { await circuitBreakerApi.downloadOfflineCsv(); } catch (e: unknown) {
-      setError(`Error al descargar: ${getErrorMessage(e)}`);
+      setError(tr('resiliencia.error_descargar_error', { error: getErrorMessage(e) }));
     } finally { setLoading(false); }
   };
 
@@ -47,8 +48,8 @@ export const ResilienciaTab: React.FC = () => {
       <Card>
         <div className="flex flex-col items-center justify-center py-10 gap-3 text-surface-400">
           <AlertTriangle className="w-8 h-8" />
-          <p className="text-sm">No se pudo conectar al servicio de integración.</p>
-          <Button variant="ghost" size="sm" onClick={load}>Reintentar</Button>
+          <p className="text-sm">{tr('resiliencia.no_se_pudo_conectar_servicio')}</p>
+          <Button variant="ghost" size="sm" onClick={load}>{tr('resiliencia.reintentar')}</Button>
         </div>
       </Card>
     );
@@ -64,12 +65,7 @@ export const ResilienciaTab: React.FC = () => {
     : cbStatus.state === 'HALF_OPEN' ? 'text-amber-600'
     : 'text-green-600';
 
-  const stateDesc =
-    cbStatus.state === 'OPEN'
-      ? 'Circuito Abierto — Modo de contingencia autónomo activo.'
-      : cbStatus.state === 'HALF_OPEN'
-        ? 'Circuito Semi-abierto — Probando reconexión con HIS.'
-        : 'Circuito Cerrado — Operación normal sincronizada con HIS.';
+  const stateDesc = tr(`resiliencia.estado_desc.${cbStatus.state}`);
 
   return (
     <div className="space-y-6">
@@ -77,7 +73,7 @@ export const ResilienciaTab: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className={`border-2 ${stateColor}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-2">
-            Estado del Circuit Breaker
+            {tr('resiliencia.estado_circuit_breaker')}
           </p>
           <div className={`text-4xl font-bold font-mono mb-3 ${stateTextColor}`}>
             {cbStatus.state}
@@ -85,23 +81,23 @@ export const ResilienciaTab: React.FC = () => {
           <p className="text-sm text-surface-600 mb-4">{stateDesc}</p>
           <div className="space-y-1.5 text-sm border-t border-surface-200 pt-3">
             <div className="flex justify-between">
-              <span className="text-surface-500">Umbral de fallas:</span>
+              <span className="text-surface-500">{tr('resiliencia.umbral_fallas')}</span>
               <span className="font-semibold text-surface-900">{cbStatus.failureThreshold}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-surface-500">Fallas actuales:</span>
+              <span className="text-surface-500">{tr('resiliencia.fallas_actuales')}</span>
               <span className={`font-semibold ${cbStatus.failureCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
                 {cbStatus.failureCount}
               </span>
             </div>
             {cbStatus.openUntil && (
               <div className="flex justify-between">
-                <span className="text-surface-500">Abierto hasta:</span>
-                <span className="text-surface-700 text-xs">{new Date(cbStatus.openUntil).toLocaleString('es-PE')}</span>
+                <span className="text-surface-500">{tr('resiliencia.abierto_hasta')}</span>
+                <span className="text-surface-700 text-xs">{formatDateTime(cbStatus.openUntil)}</span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-surface-500">Reintento tras:</span>
+              <span className="text-surface-500">{tr('resiliencia.reintento_tras')}</span>
               <span className="text-surface-700 text-xs">{Math.round(cbStatus.resetTimeoutMs / 1000)} s</span>
             </div>
           </div>
@@ -109,14 +105,14 @@ export const ResilienciaTab: React.FC = () => {
 
         <Card>
           <p className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-2">
-            Cola Offline Pendiente
+            {tr('resiliencia.cola_offline_pendiente')}
           </p>
           <div className="text-4xl font-bold font-mono text-primary-700 mb-1">
             {pending ?? '—'}
-            <span className="text-lg font-normal text-surface-500 ml-2">registros</span>
+            <span className="text-lg font-normal text-surface-500 ml-2">{tr('resiliencia.registros')}</span>
           </div>
           <p className="text-sm text-surface-500 mb-6">
-            Transacciones resguardadas en PostgreSQL para reintento automático.
+            {tr('resiliencia.transacciones_resguardadas_postgresql_para')}
           </p>
           <div className="flex gap-3">
             <Button
@@ -124,14 +120,14 @@ export const ResilienciaTab: React.FC = () => {
               icon={<RefreshCw className="w-4 h-4" />}
               onClick={handleSyncNow}
             >
-              Reintentar Sincronización
+              {tr('resiliencia.reintentar_sincronizacion')}
             </Button>
             <Button
               variant="secondary" loading={loading} fullWidth
               icon={<Download className="w-4 h-4" />}
               onClick={handleDownload}
             >
-              Descargar CSV
+              {tr('resiliencia.descargar_csv')}
             </Button>
           </div>
         </Card>

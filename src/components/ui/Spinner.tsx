@@ -1,5 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
+import { tr } from '../../i18n';
 
 interface SpinnerProps {
   size?: 'sm' | 'md' | 'lg';
@@ -22,7 +23,7 @@ export const Spinner = ({ size = 'md', className }: SpinnerProps) => (
 export const PageLoader = () => (
   <div className="flex flex-col items-center justify-center min-h-[200px] gap-3">
     <Spinner size="lg" />
-    <p className="text-sm text-surface-500">Cargando...</p>
+    <p className="text-sm text-surface-500">{tr('ui.spinner.cargando')}</p>
   </div>
 );
 

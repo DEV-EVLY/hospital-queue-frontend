@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Activity, BarChart3, Settings, FileSpreadsheet, ShieldAlert, Stethoscope, UserCog, Users, HeartPulse, ClipboardList, FolderTree } from 'lucide-react';
+import { Activity, BarChart3, Settings, FileSpreadsheet, ShieldAlert, Stethoscope, UserCog, Users, HeartPulse, ClipboardList, FolderTree, MonitorSmartphone } from 'lucide-react';
 import { Tabs } from '../ui';
 import { getRole } from '../../services/auth';
 import { MetricasTab }      from './tabs/MetricasTab';
@@ -10,24 +10,30 @@ import { ResilienciaTab }   from './tabs/ResilienciaTab';
 import { CatalogoTab }      from './tabs/CatalogoTab';
 import { UsuariosTab }      from './tabs/UsuariosTab';
 import { GruposTab }        from './tabs/GruposTab';
+import { PantallasTab }     from './tabs/PantallasTab';
 import { PacientesTab }     from './tabs/PacientesTab';
 import { MedicosTab }       from './tabs/MedicosTab';
 import { TicketsAdminTab }  from './tabs/TicketsAdminTab';
+import { tr } from '../../i18n';
 
-type TabKey = 'METRICAS' | 'REGLAS' | 'REPORTES' | 'RESILIENCIA' | 'CATALOGO' | 'USUARIOS' | 'GRUPOS' | 'PACIENTES' | 'MEDICOS' | 'TICKETS_ADMIN';
+type TabKey = 'METRICAS' | 'REGLAS' | 'REPORTES' | 'RESILIENCIA' | 'CATALOGO' | 'USUARIOS' | 'GRUPOS' | 'PACIENTES' | 'MEDICOS' | 'TICKETS_ADMIN' | 'PANTALLAS';
 
-const ALL_TABS = [
-  { key: 'METRICAS',       label: 'Métricas',    icon: <BarChart3       className="w-4 h-4" /> },
-  { key: 'REGLAS',         label: 'Reglas',      icon: <Settings        className="w-4 h-4" /> },
-  { key: 'REPORTES',       label: 'Reportes',    icon: <FileSpreadsheet className="w-4 h-4" /> },
-  { key: 'RESILIENCIA',    label: 'Resiliencia', icon: <ShieldAlert     className="w-4 h-4" /> },
-  { key: 'CATALOGO',       label: 'Catálogo',    icon: <Stethoscope     className="w-4 h-4" /> },
-  { key: 'USUARIOS',       label: 'Usuarios',    icon: <UserCog         className="w-4 h-4" /> },
-  { key: 'GRUPOS',         label: 'Grupos',      icon: <FolderTree      className="w-4 h-4" /> },
-  { key: 'PACIENTES',      label: 'Pacientes',   icon: <Users           className="w-4 h-4" /> },
-  { key: 'MEDICOS',        label: 'Médicos',     icon: <HeartPulse      className="w-4 h-4" /> },
-  { key: 'TICKETS_ADMIN',  label: 'Tickets',     icon: <ClipboardList   className="w-4 h-4" /> },
-];
+const TAB_ICONS: Record<TabKey, React.ReactNode> = {
+  METRICAS:      <BarChart3       className="w-4 h-4" />,
+  REGLAS:        <Settings        className="w-4 h-4" />,
+  REPORTES:      <FileSpreadsheet className="w-4 h-4" />,
+  RESILIENCIA:   <ShieldAlert     className="w-4 h-4" />,
+  CATALOGO:      <Stethoscope     className="w-4 h-4" />,
+  USUARIOS:      <UserCog         className="w-4 h-4" />,
+  GRUPOS:        <FolderTree      className="w-4 h-4" />,
+  PACIENTES:     <Users           className="w-4 h-4" />,
+  MEDICOS:       <HeartPulse      className="w-4 h-4" />,
+  TICKETS_ADMIN: <ClipboardList   className="w-4 h-4" />,
+  PANTALLAS:     <MonitorSmartphone className="w-4 h-4" />,
+};
+const TAB_ORDER: TabKey[] = ['METRICAS', 'REGLAS', 'REPORTES', 'RESILIENCIA', 'CATALOGO', 'USUARIOS', 'GRUPOS', 'PACIENTES', 'MEDICOS', 'TICKETS_ADMIN', 'PANTALLAS'];
+/** Se arma en cada render para que las etiquetas sigan el idioma actual. */
+const allTabs = () => TAB_ORDER.map(key => ({ key, label: tr(`admin.tab.${key}`), icon: TAB_ICONS[key] }));
 
 const SUPERVISOR_TABS: TabKey[] = ['METRICAS', 'REPORTES', 'RESILIENCIA'];
 
@@ -36,8 +42,8 @@ export const AdminDashboard: React.FC = () => {
   const isSupervisor = role === 'SUPERVISOR';
 
   const visibleTabs = isSupervisor
-    ? ALL_TABS.filter(t => SUPERVISOR_TABS.includes(t.key as TabKey))
-    : ALL_TABS;
+    ? allTabs().filter(t => SUPERVISOR_TABS.includes(t.key))
+    : allTabs();
 
   const [activeTab, setActiveTab] = useState<TabKey>('METRICAS');
 
@@ -58,12 +64,12 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-surface-900">
-                {isSupervisor ? 'Panel de Supervisión' : 'Panel de Administración Hospitalaria'}
+                {isSupervisor ? tr('admin.title_supervisor') : tr('admin.title_admin')}
               </h1>
               <p className="text-xs text-surface-500 mt-0.5">
                 {isSupervisor
-                  ? 'Métricas operativas · Reportes · Resiliencia del sistema'
-                  : 'Inteligencia de Negocios · Motor de Priorización · Resiliencia'}
+                  ? tr('admin.subtitle_supervisor')
+                  : tr('admin.subtitle_admin')}
               </p>
             </div>
           </div>
@@ -100,6 +106,7 @@ export const AdminDashboard: React.FC = () => {
             {activeTab === 'PACIENTES'     && <PacientesTab />}
             {activeTab === 'MEDICOS'       && <MedicosTab />}
             {activeTab === 'TICKETS_ADMIN' && <TicketsAdminTab />}
+            {activeTab === 'PANTALLAS'     && <PantallasTab />}
           </motion.div>
         </AnimatePresence>
       </main>

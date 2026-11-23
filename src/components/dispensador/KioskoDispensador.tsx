@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { medicalServicesApi, patientsApi, appointmentsApi, ticketsApi, getErrorMessage, ApiError } from '../../services/api';
-import type { MedicalService, Patient, Appointment, Ticket } from '../../types/api';
-import { translations, SupportedLanguage } from '../../locales/i18n';
-import { Button, Card, Spinner } from '../ui';
+import type { MedicalService, Patient, Appointment, Ticket, DeviceProfile } from '../../types/api';
+import { Button, Card, Spinner, LanguageSelector } from '../ui';
 import {
   Activity, AlertCircle, AlertTriangle, Baby, CheckCircle2,
   FlaskConical, Heart, Info, Printer, SmilePlus, Stethoscope,
   UserCheck, Volume2,
 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
+import { tr } from '../../i18n';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,10 +34,10 @@ const getServiceIcon = (iconName: string | null): React.ReactNode =>
 
 // ─── Priority helpers ─────────────────────────────────────────────────────────
 
-const priorityLabel = (level: string, t: Record<string, string>) => {
-  if (level === 'URGENT')       return t.priority_urgent;
-  if (level === 'PREFERENTIAL') return t.priority_preferential;
-  return t.priority_normal;
+const priorityText = (level: string) => {
+  if (level === 'URGENT')       return tr('kiosk.priority_urgent');
+  if (level === 'PREFERENTIAL') return tr('kiosk.priority_preferential');
+  return tr('kiosk.priority_normal');
 };
 
 const priorityClasses = (level: string) => {
@@ -64,11 +64,14 @@ const transition = { type: 'tween', duration: 0.22, ease: 'easeOut' };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export const KioskoDispensador: React.FC = () => {
-  // Language
-  const [lang, setLang] = useState<SupportedLanguage>('es');
-  const t = translations[lang];
+export interface KioskoDispensadorProps {
+  /** Perfil del equipo (null = modo abierto: todos los servicios). */
+  profile?: DeviceProfile | null;
+  /** Token del equipo vinculado: el servidor lo exige para emitir tickets cuando hay perfiles de kiosko. */
+  deviceToken?: string | null;
+}
 
+export const KioskoDispensador: React.FC<KioskoDispensadorProps> = ({ profile = null, deviceToken = null }) => {
   // Step flow
   const [step, setStep]         = useState<Step>('DOCUMENTO');
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -103,14 +106,17 @@ export const KioskoDispensador: React.FC = () => {
   // Barcode ref
   const barcodeRef = useRef<SVGSVGElement>(null);
 
-  // ─── Load services on mount ─────────────────────────────────────────────────
+  // ─── Load services on mount (y cuando cambia el perfil del equipo) ───────────
+  const profileKey = `${profile?.id ?? ''}:${(profile?.serviceIds ?? []).join(',')}`;
+  const allowedByProfile = (id: string): boolean =>
+    !profile || profile.serviceIds.length === 0 || profile.serviceIds.includes(id);
   useEffect(() => {
     medicalServicesApi.list()
-      .then(d => setServices(d.filter(s => s.active)))
+      .then(d => setServices(d.filter(s => s.active && allowedByProfile(s.id))))
       .catch(() =>
-        setErrorMsg('No se pudieron cargar los servicios. Por favor espera un momento y vuelve a intentar.')
+        setErrorMsg(tr('kiosk.no_se_pudieron_cargar_servicios'))
       );
-  }, []);
+  }, [profileKey]);
 
   // ─── Auto-reset countdown ───────────────────────────────────────────────────
   useEffect(() => {
@@ -165,7 +171,7 @@ export const KioskoDispensador: React.FC = () => {
   // ─── DNI continue ───────────────────────────────────────────────────────────
   const handleContinuarDni = async () => {
     if (!dni || dni.length < 8) {
-      setErrorMsg('Por favor ingresa un número de documento válido (mínimo 8 dígitos).');
+      setErrorMsg(tr('kiosk.por_favor_ingresa_numero_documento'));
       return;
     }
     setLoading(true);
@@ -187,7 +193,7 @@ export const KioskoDispensador: React.FC = () => {
         const is404 = searchErr instanceof ApiError && searchErr.status === 404;
         if (!is404) {
           setRegistryWarning(
-            'No pudimos verificar tu documento en el sistema. Tu turno será como visitante. Si tienes cita, acércate a admisión.'
+            tr('kiosk.no_pudimos_verificar_tu_documento')
           );
         }
       }
@@ -223,7 +229,7 @@ export const KioskoDispensador: React.FC = () => {
       pregnant:   esGestante,
       elderly:    esAdultoMayor,
       disability: tieneDiscapacidad,
-    });
+    }, deviceToken);
     const svc = services.find(s => s.id === serviceId);
     setIssuedTicket(ticket);
     setIssuedService(svc ?? null);
@@ -238,7 +244,7 @@ export const KioskoDispensador: React.FC = () => {
     try {
       await dispense(selectedAppointment.medicalServiceId, selectedAppointment.id);
     } catch (e: unknown) {
-      setErrorMsg(`No se pudo generar el turno: ${getErrorMessage(e)}`);
+      setErrorMsg(tr('kiosk.no_se_pudo_generar_turno', { error: getErrorMessage(e) }));
     } finally {
       setLoading(false);
     }
@@ -256,7 +262,7 @@ export const KioskoDispensador: React.FC = () => {
     try {
       await dispense(selectedService.id);
     } catch (e: unknown) {
-      setErrorMsg(`No se pudo generar el turno: ${getErrorMessage(e)}`);
+      setErrorMsg(tr('kiosk.no_se_pudo_generar_turno', { error: getErrorMessage(e) }));
     } finally {
       setLoading(false);
     }
@@ -324,31 +330,15 @@ export const KioskoDispensador: React.FC = () => {
             <Activity className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-wide text-surface-900">{t.hospital_title}</h1>
+            <h1 className="text-xl font-black tracking-wide text-surface-900">{tr('kiosk.hospital_title')}</h1>
             <p className="text-xs font-semibold text-surface-500 tracking-widest uppercase">
-              Dispensador de Turnos
+              {tr('kiosk.dispensador_turnos')}
             </p>
           </div>
         </div>
 
         {/* Language switcher */}
-        <div className="flex items-center gap-1 bg-surface-100 p-1.5 rounded-xl border border-surface-200">
-          {(['es', 'qu', 'en'] as SupportedLanguage[]).map(l => (
-            <button
-              key={l}
-              onClick={() => setLang(l)}
-              style={{ minHeight: 44 }}
-              className={[
-                'px-4 py-2 rounded-lg text-sm font-semibold transition-all',
-                lang === l
-                  ? 'bg-primary-700 text-white shadow-card'
-                  : 'text-surface-500 hover:text-surface-800 hover:bg-surface-200',
-              ].join(' ')}
-            >
-              {l === 'es' ? 'Español' : l === 'qu' ? 'Runasimi' : 'English'}
-            </button>
-          ))}
-        </div>
+        <LanguageSelector variant="pills" />
       </header>
 
       {/* ── Global banners ── */}
@@ -389,8 +379,8 @@ export const KioskoDispensador: React.FC = () => {
 
                 {/* Welcome header */}
                 <div className="text-center">
-                  <h2 className="text-3xl font-black text-surface-900 mb-1">{t.welcome}</h2>
-                  <p className="text-base text-surface-500">{t.touch_to_start}</p>
+                  <h2 className="text-3xl font-black text-surface-900 mb-1">{tr('kiosk.welcome')}</h2>
+                  <p className="text-base text-surface-500">{tr('kiosk.touch_to_start')}</p>
                 </div>
 
                 {/* Welcome banner (non-blocking) */}
@@ -410,7 +400,7 @@ export const KioskoDispensador: React.FC = () => {
                     autoComplete="off"
                     maxLength={12}
                     value={dni}
-                    placeholder={t.dni_placeholder}
+                    placeholder={tr('kiosk.dni_placeholder')}
                     onChange={e => { setErrorMsg(null); setDni(e.target.value.replace(/\D/g, '').slice(0, 12)); }}
                     onKeyDown={e => { if (e.key === 'Enter') handleContinuarDni(); }}
                     className={`w-full rounded-xl bg-surface-50 border-2 border-surface-200 px-6 py-0 h-[84px] block text-center text-surface-900 transition-colors focus:outline-none focus:border-primary-400 placeholder:text-surface-300 ${dni ? 'font-mono text-5xl font-bold' : 'font-sans text-xl font-normal'}`}
@@ -420,7 +410,7 @@ export const KioskoDispensador: React.FC = () => {
 
                 {/* Instruction */}
                 <p className="text-sm font-medium text-surface-500 text-center -mt-2">
-                  Ingrese su numero de documento
+                  {tr('kiosk.ingrese_su_numero_documento')}
                 </p>
 
                 {/* Numeric keypad */}
@@ -436,13 +426,13 @@ export const KioskoDispensador: React.FC = () => {
                   ))}
                   {/* Bottom row: clear | 0 | backspace */}
                   <button onClick={clearDni} className="kiosko-key-delete text-red-600">
-                    {t.clear}
+                    {tr('kiosk.clear')}
                   </button>
                   <button onClick={() => appendDigit('0')} className="kiosko-key text-surface-900">
                     0
                   </button>
                   <button onClick={backspace} className="kiosko-key text-surface-600">
-                    {t.delete}
+                    {tr('kiosk.delete')}
                   </button>
                 </div>
 
@@ -454,7 +444,7 @@ export const KioskoDispensador: React.FC = () => {
                     fullWidth
                     onClick={() => { setErrorMsg(null); goTo('SERVICIOS', 1); }}
                   >
-                    {t.guest}
+                    {tr('kiosk.guest')}
                   </Button>
                   <Button
                     variant="primary"
@@ -463,7 +453,7 @@ export const KioskoDispensador: React.FC = () => {
                     loading={loading}
                     onClick={handleContinuarDni}
                   >
-                    {loading ? 'Buscando...' : t.search}
+                    {loading ? tr('kiosk.buscando') : tr('kiosk.search')}
                   </Button>
                 </div>
               </div>
@@ -480,11 +470,11 @@ export const KioskoDispensador: React.FC = () => {
                   <div className="bg-health-100 text-health-600 p-5 rounded-xl2 border border-health-200">
                     <CheckCircle2 className="w-12 h-12" />
                   </div>
-                  <h2 className="text-2xl font-black text-surface-900">{t.has_appointment_title}</h2>
+                  <h2 className="text-2xl font-black text-surface-900">{tr('kiosk.has_appointment_title')}</h2>
                   <p className="text-surface-500 text-sm">
-                    {t.appointment_msg}{' '}
+                    {tr('kiosk.appointment_msg')}{' '}
                     <strong className="text-surface-800">
-                      {services.find(s => s.id === selectedAppointment.medicalServiceId)?.name || 'Servicio Medico'}
+                      {services.find(s => s.id === selectedAppointment.medicalServiceId)?.name || tr('kiosk.servicio_medico')}
                     </strong>
                   </p>
                 </div>
@@ -493,21 +483,21 @@ export const KioskoDispensador: React.FC = () => {
                 <Card padding="lg">
                   <dl className="divide-y divide-surface-100">
                     <div className="flex justify-between py-3 first:pt-0 last:pb-0">
-                      <dt className="text-sm text-surface-500">{t.appointment_time}</dt>
+                      <dt className="text-sm text-surface-500">{tr('kiosk.appointment_time')}</dt>
                       <dd className="text-base font-bold font-mono text-primary-700">
                         {selectedAppointment.appointmentTime}
                       </dd>
                     </div>
                     <div className="flex justify-between py-3">
-                      <dt className="text-sm text-surface-500">{t.with_doctor}</dt>
+                      <dt className="text-sm text-surface-500">{tr('kiosk.with_doctor')}</dt>
                       <dd className="text-sm font-semibold text-surface-800">
-                        {selectedAppointment.doctorName || 'Por asignar'}
+                        {selectedAppointment.doctorName || tr('kiosk.por_asignar')}
                       </dd>
                     </div>
                     <div className="flex justify-between py-3 last:pb-0">
-                      <dt className="text-sm text-surface-500">{t.suggested_room}</dt>
+                      <dt className="text-sm text-surface-500">{tr('kiosk.suggested_room')}</dt>
                       <dd className="text-sm font-semibold text-health-700">
-                        {selectedAppointment.suggestedRoomCode || 'Por confirmar'}
+                        {selectedAppointment.suggestedRoomCode || tr('kiosk.por_confirmar')}
                       </dd>
                     </div>
                   </dl>
@@ -516,7 +506,7 @@ export const KioskoDispensador: React.FC = () => {
                 {/* Preferential conditions */}
                 <div>
                   <p className="text-xs font-bold text-surface-500 uppercase tracking-widest mb-3">
-                    {t.preferential_conditions}
+                    {tr('kiosk.preferential_conditions')}
                   </p>
                   <div className="grid grid-cols-3 gap-3">
                     <ConditionCard
@@ -524,21 +514,21 @@ export const KioskoDispensador: React.FC = () => {
                       onToggle={() => setEsGestante(v => !v)}
                       color="pink"
                       icon={<Heart className="w-6 h-6" />}
-                      label={t.pregnant}
+                      label={tr('kiosk.pregnant')}
                     />
                     <ConditionCard
                       active={esAdultoMayor}
                       onToggle={() => setEsAdultoMayor(v => !v)}
                       color="amber"
                       icon={<UserCheck className="w-6 h-6" />}
-                      label={t.senior}
+                      label={tr('kiosk.senior')}
                     />
                     <ConditionCard
                       active={tieneDiscapacidad}
                       onToggle={() => setTieneDiscapacidad(v => !v)}
                       color="purple"
                       icon={<AlertCircle className="w-6 h-6" />}
-                      label={t.disability}
+                      label={tr('kiosk.disability')}
                     />
                   </div>
                 </div>
@@ -559,7 +549,7 @@ export const KioskoDispensador: React.FC = () => {
                     fullWidth
                     onClick={() => { setErrorMsg(null); goTo('SERVICIOS', 1); }}
                   >
-                    {t.other_service}
+                    {tr('kiosk.other_service')}
                   </Button>
                   <Button
                     variant="success"
@@ -568,7 +558,7 @@ export const KioskoDispensador: React.FC = () => {
                     loading={loading}
                     onClick={handleEmitirTurnoCita}
                   >
-                    {loading ? 'Generando...' : t.confirm_appointment_ticket}
+                    {loading ? tr('kiosk.generando') : tr('kiosk.confirm_appointment_ticket')}
                   </Button>
                 </div>
               </div>
@@ -583,16 +573,16 @@ export const KioskoDispensador: React.FC = () => {
                 {/* Heading */}
                 <div className="text-center">
                   <h2 className="text-2xl font-black text-surface-900 mb-1">
-                    Seleccione el servicio que necesita
+                    {tr('kiosk.seleccione_servicio_que_necesita')}
                   </h2>
-                  <p className="text-sm text-surface-500">{t.select_service}</p>
+                  <p className="text-sm text-surface-500">{tr('kiosk.select_service')}</p>
                 </div>
 
                 {/* Loading state */}
                 {services.length === 0 && !errorMsg && (
                   <div className="flex flex-col items-center gap-3 py-16">
                     <Spinner size="lg" />
-                    <p className="text-surface-500 text-sm">Cargando servicios disponibles...</p>
+                    <p className="text-surface-500 text-sm">{tr('kiosk.cargando_servicios_disponibles')}</p>
                   </div>
                 )}
 
@@ -622,7 +612,7 @@ export const KioskoDispensador: React.FC = () => {
                           </h3>
                           <div className="flex items-center justify-between mt-1">
                             <span className="text-xs text-surface-500 font-medium">
-                              {t.est_time}: ~{svc.estimatedMinutes} min
+                              {tr('kiosk.est_time')}: ~{svc.estimatedMinutes} min
                             </span>
                             <span className="font-mono font-bold text-xs bg-primary-50 text-primary-700 border border-primary-100 px-2 py-0.5 rounded-lg">
                               [{svc.ticketPrefix}]
@@ -641,7 +631,7 @@ export const KioskoDispensador: React.FC = () => {
                     size="lg"
                     onClick={() => { setErrorMsg(null); setRegistryWarning(null); goTo('DOCUMENTO', -1); }}
                   >
-                    {t.back_to_start}
+                    {tr('kiosk.back_to_start')}
                   </Button>
                 </div>
               </div>
@@ -656,9 +646,9 @@ export const KioskoDispensador: React.FC = () => {
                 {/* Heading */}
                 <div className="text-center">
                   <h2 className="text-2xl font-black text-surface-900 mb-1">
-                    Tiene alguna condicion especial?
+                    {tr('kiosk.tiene_alguna_condicion_especial')}
                   </h2>
-                  <p className="text-sm text-surface-500">{t.preferential_conditions}</p>
+                  <p className="text-sm text-surface-500">{tr('kiosk.preferential_conditions')}</p>
                 </div>
 
                 {/* Selected service summary */}
@@ -666,7 +656,7 @@ export const KioskoDispensador: React.FC = () => {
                   <div className="flex items-center gap-3 bg-primary-50 border border-primary-100 rounded-xl2 px-4 py-3">
                     <div className="text-primary-600">{getServiceIcon(selectedService.iconName)}</div>
                     <div>
-                      <p className="text-xs text-primary-500 font-medium uppercase tracking-wider">Servicio seleccionado</p>
+                      <p className="text-xs text-primary-500 font-medium uppercase tracking-wider">{tr('kiosk.servicio_seleccionado')}</p>
                       <p className="text-sm font-bold text-primary-800">{selectedService.name}</p>
                     </div>
                   </div>
@@ -679,21 +669,21 @@ export const KioskoDispensador: React.FC = () => {
                     onToggle={() => setEsGestante(v => !v)}
                     color="pink"
                     icon={<Heart className="w-8 h-8" />}
-                    label={t.pregnant}
+                    label={tr('kiosk.pregnant')}
                   />
                   <ConditionCard
                     active={esAdultoMayor}
                     onToggle={() => setEsAdultoMayor(v => !v)}
                     color="amber"
                     icon={<UserCheck className="w-8 h-8" />}
-                    label={t.senior}
+                    label={tr('kiosk.senior')}
                   />
                   <ConditionCard
                     active={tieneDiscapacidad}
                     onToggle={() => setTieneDiscapacidad(v => !v)}
                     color="purple"
                     icon={<AlertCircle className="w-8 h-8" />}
-                    label={t.disability}
+                    label={tr('kiosk.disability')}
                   />
                 </div>
 
@@ -713,7 +703,7 @@ export const KioskoDispensador: React.FC = () => {
                     fullWidth
                     onClick={() => { setErrorMsg(null); goTo('SERVICIOS', -1); }}
                   >
-                    Atras
+                    {tr('kiosk.atras')}
                   </Button>
                   <Button
                     variant="primary"
@@ -722,7 +712,7 @@ export const KioskoDispensador: React.FC = () => {
                     loading={loading}
                     onClick={handleEmitirTurnoServicio}
                   >
-                    {loading ? 'Generando...' : 'Continuar'}
+                    {loading ? tr('kiosk.generando') : tr('kiosk.continuar')}
                   </Button>
                 </div>
 
@@ -733,7 +723,7 @@ export const KioskoDispensador: React.FC = () => {
                     onClick={handleEmitirTurnoServicio}
                     disabled={loading}
                   >
-                    Ninguna, continuar sin condicion especial
+                    {tr('kiosk.ninguna_continuar_sin_condicion_especial')}
                   </button>
                 </div>
               </div>
@@ -748,7 +738,7 @@ export const KioskoDispensador: React.FC = () => {
                 {/* Success banner */}
                 <div className="flex items-center justify-center gap-2 text-health-700 font-semibold text-sm">
                   <CheckCircle2 className="w-5 h-5 text-health-500" />
-                  {t.ticket_issued}
+                  {tr('kiosk.ticket_issued')}
                 </div>
 
                 {/* Ticket card */}
@@ -759,9 +749,9 @@ export const KioskoDispensador: React.FC = () => {
                   {/* Top bar */}
                   <div className="bg-primary-700 px-6 py-3 text-center">
                     <p className="text-xs font-bold text-primary-200 tracking-widest uppercase">
-                      {t.hospital_title}
+                      {tr('kiosk.hospital_title')}
                     </p>
-                    <p className="text-[10px] text-primary-300 tracking-wider">COMPROBANTE DE TURNO</p>
+                    <p className="text-[10px] text-primary-300 tracking-wider">{tr('kiosk.comprobante_turno')}</p>
                   </div>
 
                   {/* Body */}
@@ -770,7 +760,7 @@ export const KioskoDispensador: React.FC = () => {
                     {/* Ticket code */}
                     <div className="text-center">
                       <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1">
-                        {t.your_ticket}
+                        {tr('kiosk.your_ticket')}
                       </p>
                       <div className="ticket-code text-7xl text-primary-700 leading-none">
                         {issuedTicket.ticketCode}
@@ -779,19 +769,19 @@ export const KioskoDispensador: React.FC = () => {
 
                     {/* Priority badge */}
                     <span className={`px-4 py-1 rounded-full text-xs font-black uppercase tracking-wider ${priorityClasses(issuedTicket.priorityLevel)}`}>
-                      {t.priority_prefix} {priorityLabel(issuedTicket.priorityLevel, t)}
+                      {tr('kiosk.priority_prefix')} {priorityText(issuedTicket.priorityLevel)}
                     </span>
 
                     {/* Details table */}
                     <div className="w-full bg-surface-50 border border-surface-200 rounded-xl p-4 space-y-2 text-sm">
                       {issuedService && (
                         <div className="flex justify-between">
-                          <span className="text-surface-500">{t.service_label}</span>
+                          <span className="text-surface-500">{tr('kiosk.service_label')}</span>
                           <span className="font-semibold text-surface-800">{issuedService.name}</span>
                         </div>
                       )}
                       <div className="flex justify-between">
-                        <span className="text-surface-500">{t.priority_points}</span>
+                        <span className="text-surface-500">{tr('kiosk.priority_points')}</span>
                         <span className="font-semibold text-primary-700">{issuedTicket.priorityPoints} pts</span>
                       </div>
                     </div>
@@ -816,7 +806,7 @@ export const KioskoDispensador: React.FC = () => {
                         />
                       </div>
                       <p className="text-[10px] text-surface-400 text-center mt-1">
-                        Pantalla se reiniciara en {countdown}s
+                        {tr('kiosk.reinicio', { n: countdown })}
                       </p>
                     </div>
                   </div>
@@ -831,7 +821,7 @@ export const KioskoDispensador: React.FC = () => {
                     icon={<Printer className="w-5 h-5" />}
                     onClick={() => window.print()}
                   >
-                    {t.print_ticket}
+                    {tr('kiosk.print_ticket')}
                   </Button>
                   <Button
                     variant="primary"
@@ -839,7 +829,7 @@ export const KioskoDispensador: React.FC = () => {
                     fullWidth
                     onClick={resetKiosk}
                   >
-                    {t.close} ({countdown}s)
+                    {tr('kiosk.close')} ({countdown}s)
                   </Button>
                 </div>
 
@@ -850,7 +840,7 @@ export const KioskoDispensador: React.FC = () => {
                   className="w-full flex items-center justify-center gap-2 text-sm font-semibold text-surface-500 hover:text-surface-800 bg-white border border-surface-200 hover:bg-surface-50 rounded-xl2 transition-all"
                 >
                   <Volume2 className="w-4 h-4" />
-                  {t.need_more_time}
+                  {tr('kiosk.need_more_time')}
                 </button>
               </div>
             )}
@@ -861,7 +851,7 @@ export const KioskoDispensador: React.FC = () => {
 
       {/* ── Footer ── */}
       <footer className="text-center text-xs text-surface-400 font-medium py-4 border-t border-surface-100">
-        Sistema de Colas Autonomo On-Premise | Soporte Multilingue | Ley 28683
+        {tr('kiosk.footer')}
       </footer>
     </div>
   );

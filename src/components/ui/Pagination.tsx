@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './Button';
+import { tr } from '../../i18n';
 
 interface PaginationProps {
   page: number;
@@ -23,8 +24,8 @@ export const Pagination: React.FC<PaginationProps> = ({
     <div className={`flex items-center justify-between gap-4 px-1 py-3 border-t border-surface-100 ${className}`}>
       <span className="text-xs text-surface-500">
         {totalElements === 0
-          ? 'Sin resultados'
-          : `Mostrando ${from}–${to} de ${totalElements}`}
+          ? tr('ui.pagination.sin_resultados')
+          : tr('ui.pagination.mostrando', { from, to, total: totalElements })}
       </span>
       <div className="flex items-center gap-2">
         <Button
@@ -34,7 +35,7 @@ export const Pagination: React.FC<PaginationProps> = ({
           disabled={page === 0}
           onClick={() => onPageChange(page - 1)}
         >
-          Anterior
+          {tr('ui.pagination.anterior')}
         </Button>
         <span className="text-xs text-surface-600 font-medium min-w-[52px] text-center">
           {totalPages > 0 ? `${page + 1} / ${totalPages}` : '1 / 1'}
@@ -46,7 +47,7 @@ export const Pagination: React.FC<PaginationProps> = ({
           disabled={page >= totalPages - 1}
           onClick={() => onPageChange(page + 1)}
         >
-          Siguiente
+          {tr('ui.pagination.siguiente')}
         </Button>
       </div>
     </div>

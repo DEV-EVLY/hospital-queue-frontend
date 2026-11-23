@@ -5,6 +5,7 @@ import { Card, Badge, Button, Input, Modal, Tabs, Select } from '../../ui';
 import { medicalServicesApi, consultingRoomsApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
 import type { MedicalService, ConsultingRoom } from '../../../types/api';
+import { tr, roomStatusLabel, iconOptions } from '../../../i18n';
 
 interface ServiceForm { name: string; ticketPrefix: string; iconName: string; estimatedMinutes: number }
 interface RoomForm { name: string; code: string; medicalServiceId: string; location: string }
@@ -12,24 +13,13 @@ interface RoomForm { name: string; code: string; medicalServiceId: string; locat
 const BLANK_SERVICE: ServiceForm = { name: '', ticketPrefix: '', iconName: 'stethoscope', estimatedMinutes: 20 };
 const BLANK_ROOM: RoomForm = { name: '', code: '', medicalServiceId: '', location: '' };
 
-const ROOM_STATUS: Record<string, { label: string; variant: 'success' | 'warning' | 'primary' | 'gray' }> = {
-  AVAILABLE: { label: 'Disponible', variant: 'success' },
-  BUSY:      { label: 'Ocupado',    variant: 'warning' },
-  PAUSED:    { label: 'En pausa',   variant: 'primary' },
-  CLOSED:    { label: 'Cerrado',    variant: 'gray' },
+const ROOM_VARIANT: Record<string, 'success' | 'warning' | 'primary' | 'gray'> = {
+  AVAILABLE: 'success', BUSY: 'warning', PAUSED: 'primary', CLOSED: 'gray',
 };
 
-const ICON_OPTIONS = [
-  { value: 'stethoscope',   label: 'Estetoscopio' },
-  { value: 'heart',         label: 'Corazón' },
-  { value: 'baby',          label: 'Pediatría' },
-  { value: 'activity',      label: 'Emergencia' },
-  { value: 'flask-conical', label: 'Laboratorio' },
-];
-
-const CATALOG_TABS = [
-  { key: 'SERVICIOS',    label: 'Servicios Médicos', icon: <Stethoscope className="w-4 h-4" /> },
-  { key: 'CONSULTORIOS', label: 'Consultorios',      icon: <Building2 className="w-4 h-4" /> },
+const catalogTabs = () => [
+  { key: 'SERVICIOS',    label: tr('catalogo.servicios_medicos'), icon: <Stethoscope className="w-4 h-4" /> },
+  { key: 'CONSULTORIOS', label: tr('catalogo.consultorios'),      icon: <Building2 className="w-4 h-4" /> },
 ];
 
 export const CatalogoTab: React.FC = () => {
@@ -51,11 +41,11 @@ export const CatalogoTab: React.FC = () => {
 
   const loadServices = async () => {
     try { setServices(await medicalServicesApi.list()); }
-    catch (e: unknown) { setServiceError(`Error al cargar servicios: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setServiceError(tr('common.error_cargar_servicios_error', { error: getErrorMessage(e) })); }
   };
   const loadRooms = async () => {
     try { setRooms(await consultingRoomsApi.list()); }
-    catch (e: unknown) { setRoomError(`Error al cargar consultorios: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setRoomError(tr('catalogo.error_cargar_consultorios_error', { error: getErrorMessage(e) })); }
   };
 
   useEffect(() => { loadServices(); loadRooms(); }, []);
@@ -75,7 +65,7 @@ export const CatalogoTab: React.FC = () => {
 
   const saveService = async () => {
     if (!serviceForm.name || !serviceForm.ticketPrefix) {
-      setServiceError('Nombre y prefijo de ticket son obligatorios.'); return;
+      setServiceError(tr('catalogo.nombre_y_prefijo_ticket_son')); return;
     }
     setServiceError(null);
     try {
@@ -94,7 +84,7 @@ export const CatalogoTab: React.FC = () => {
     try {
       await medicalServicesApi.toggleActive(id);
       setServices(prev => prev.map(s => s.id === id ? { ...s, active: !s.active } : s));
-    } catch (e: unknown) { setServiceError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setServiceError(tr('common.error_error', { error: getErrorMessage(e) })); }
   };
 
   // ── Room handlers ──────────────────────────────────────────────────────────
@@ -112,7 +102,7 @@ export const CatalogoTab: React.FC = () => {
 
   const saveRoom = async () => {
     if (!roomForm.name || !roomForm.code) {
-      setRoomError('Nombre y código son obligatorios.'); return;
+      setRoomError(tr('catalogo.nombre_y_codigo_son_obligatorios')); return;
     }
     setRoomError(null);
     const payload = { ...roomForm, medicalServiceId: roomForm.medicalServiceId || null };
@@ -132,18 +122,18 @@ export const CatalogoTab: React.FC = () => {
     try {
       const updated = await consultingRoomsApi.toggleActive(id);
       setRooms(prev => prev.map(r => r.id === id ? updated : r));
-    } catch (e: unknown) { setRoomError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setRoomError(tr('common.error_error', { error: getErrorMessage(e) })); }
   };
 
   const activeServiceOptions = [
-    { value: '', label: 'Sin asignar' },
+    { value: '', label: tr('common.sin_asignar') },
     ...services.filter(s => s.active).map(s => ({ value: s.id, label: s.name })),
   ];
 
   return (
     <div className="space-y-6">
       <Tabs
-        tabs={CATALOG_TABS}
+        tabs={catalogTabs()}
         active={subTab}
         onChange={key => setSubTab(key as 'SERVICIOS' | 'CONSULTORIOS')}
         className="w-fit"
@@ -162,15 +152,15 @@ export const CatalogoTab: React.FC = () => {
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
                 <div>
-                  <h3 className="text-sm font-semibold text-surface-900">Servicios Médicos</h3>
+                  <h3 className="text-sm font-semibold text-surface-900">{tr('catalogo.servicios_medicos')}</h3>
                   <p className="text-xs text-surface-500 mt-0.5">{services.length} servicios registrados</p>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadServices}>
-                    Recargar
+                    {tr('common.recargar')}
                   </Button>
                   <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreateService}>
-                    Agregar
+                    {tr('common.agregar')}
                   </Button>
                 </div>
               </div>
@@ -179,11 +169,11 @@ export const CatalogoTab: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-surface-100">
-                      <TH>Nombre</TH>
-                      <TH>Prefijo</TH>
-                      <TH className="text-right">T. Est.</TH>
-                      <TH>Estado</TH>
-                      <TH className="text-right">Acciones</TH>
+                      <TH>{tr('common.nombre')}</TH>
+                      <TH>{tr('catalogo.prefijo')}</TH>
+                      <TH className="text-right">{tr('catalogo.t_est')}</TH>
+                      <TH>{tr('common.estado')}</TH>
+                      <TH className="text-right">{tr('common.acciones')}</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -195,8 +185,8 @@ export const CatalogoTab: React.FC = () => {
                         <TD>
                           <button onClick={() => toggleService(s.id)}>
                             {s.active
-                              ? <Badge variant="success" dot>Activo</Badge>
-                              : <Badge variant="gray" dot>Inactivo</Badge>}
+                              ? <Badge variant="success" dot>{tr('common.activo')}</Badge>
+                              : <Badge variant="gray" dot>{tr('common.inactivo')}</Badge>}
                           </button>
                         </TD>
                         <TD className="text-right">
@@ -212,7 +202,7 @@ export const CatalogoTab: React.FC = () => {
                     {services.length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-4 py-8 text-center text-surface-400 text-sm">
-                          No hay servicios médicos registrados
+                          {tr('catalogo.no_hay_servicios_medicos_registrados')}
                         </td>
                       </tr>
                     )}
@@ -227,15 +217,15 @@ export const CatalogoTab: React.FC = () => {
             <Card padding="none">
               <div className="px-6 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
                 <div>
-                  <h3 className="text-sm font-semibold text-surface-900">Consultorios</h3>
+                  <h3 className="text-sm font-semibold text-surface-900">{tr('catalogo.consultorios')}</h3>
                   <p className="text-xs text-surface-500 mt-0.5">{rooms.length} consultorios registrados</p>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadRooms}>
-                    Recargar
+                    {tr('common.recargar')}
                   </Button>
                   <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={openCreateRoom}>
-                    Agregar
+                    {tr('common.agregar')}
                   </Button>
                 </div>
               </div>
@@ -244,12 +234,12 @@ export const CatalogoTab: React.FC = () => {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-surface-100">
-                      <TH>Nombre</TH>
-                      <TH>Código</TH>
-                      <TH>Servicio</TH>
-                      <TH>Ubicación</TH>
-                      <TH>Estado</TH>
-                      <TH className="text-right">Acciones</TH>
+                      <TH>{tr('common.nombre')}</TH>
+                      <TH>{tr('common.codigo')}</TH>
+                      <TH>{tr('common.servicio')}</TH>
+                      <TH>{tr('common.ubicacion')}</TH>
+                      <TH>{tr('common.estado')}</TH>
+                      <TH className="text-right">{tr('common.acciones')}</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -265,9 +255,9 @@ export const CatalogoTab: React.FC = () => {
                         </TD>
                         <TD>
                           <button onClick={() => toggleRoom(r.id)}
-                            title={r.status === 'CLOSED' ? 'Reabrir consultorio' : 'Cerrar consultorio'}>
-                            <Badge variant={ROOM_STATUS[r.status]?.variant ?? 'gray'} dot>
-                              {ROOM_STATUS[r.status]?.label ?? r.status}
+                            title={r.status === 'CLOSED' ? tr('catalogo.reabrir_consultorio') : tr('catalogo.cerrar_consultorio')}>
+                            <Badge variant={ROOM_VARIANT[r.status] ?? 'gray'} dot>
+                              {roomStatusLabel(r.status)}
                             </Badge>
                           </button>
                         </TD>
@@ -284,7 +274,7 @@ export const CatalogoTab: React.FC = () => {
                     {rooms.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-4 py-8 text-center text-surface-400 text-sm">
-                          No hay consultorios registrados
+                          {tr('catalogo.no_hay_consultorios_registrados')}
                         </td>
                       </tr>
                     )}
@@ -300,34 +290,34 @@ export const CatalogoTab: React.FC = () => {
       <Modal
         open={showServiceModal}
         onClose={closeServiceModal}
-        title={editingServiceId ? 'Editar Servicio Médico' : 'Nuevo Servicio Médico'}
-        description="Configura el servicio, prefijo de ticket y tiempo estimado"
+        title={editingServiceId ? tr('catalogo.editar_servicio') : tr('catalogo.nuevo_servicio')}
+        description={tr('catalogo.configura_servicio_prefijo_ticket_y')}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={closeServiceModal}>Cancelar</Button>
+            <Button variant="secondary" onClick={closeServiceModal}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={saveService}>
-              {editingServiceId ? 'Guardar Cambios' : 'Crear Servicio'}
+              {editingServiceId ? tr('common.guardar_cambios') : tr('catalogo.crear_servicio')}
             </Button>
           </>
         }
       >
         <FormError msg={serviceError} onDismiss={() => setServiceError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Nombre *" maxLength={100} placeholder="Cardiología"
+          <Input label={tr('common.nombre_2')} maxLength={100} placeholder={tr('common.cardiologia')}
             value={serviceForm.name}
             onChange={e => setServiceForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
-          <Input label="Prefijo de ticket *" placeholder="C" maxLength={3}
+          <Input label={tr('catalogo.prefijo_ticket')} placeholder="C" maxLength={3}
             value={serviceForm.ticketPrefix}
             onChange={e => setServiceForm((f) => ({ ...f, ticketPrefix: e.target.value.toUpperCase() }))} fullWidth />
-          <Input label="Tiempo estimado (min)" type="number" min={1} max={480}
+          <Input label={tr('catalogo.tiempo_estimado_min')} type="number" min={1} max={480}
             value={serviceForm.estimatedMinutes}
             onChange={e => setServiceForm((f) => ({ ...f, estimatedMinutes: +e.target.value }))} fullWidth />
           <Select
-            label="Ícono"
+            label={tr('catalogo.icono')}
             value={serviceForm.iconName}
             onChange={val => setServiceForm((f) => ({ ...f, iconName: val }))}
-            options={ICON_OPTIONS}
+            options={iconOptions()}
             fullWidth
           />
         </div>
@@ -337,34 +327,34 @@ export const CatalogoTab: React.FC = () => {
       <Modal
         open={showRoomModal}
         onClose={closeRoomModal}
-        title={editingRoomId ? 'Editar Consultorio' : 'Nuevo Consultorio'}
-        description="Registra código, servicio asignado y ubicación"
+        title={editingRoomId ? tr('catalogo.editar_consultorio') : tr('catalogo.nuevo_consultorio')}
+        description={tr('catalogo.registra_codigo_servicio_asignado_y')}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={closeRoomModal}>Cancelar</Button>
+            <Button variant="secondary" onClick={closeRoomModal}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={saveRoom}>
-              {editingRoomId ? 'Guardar Cambios' : 'Crear Consultorio'}
+              {editingRoomId ? tr('common.guardar_cambios') : tr('catalogo.crear_consultorio')}
             </Button>
           </>
         }
       >
         <FormError msg={roomError} onDismiss={() => setRoomError(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Nombre *" maxLength={100} placeholder="Consultorio 1"
+          <Input label={tr('common.nombre_2')} maxLength={100} placeholder={tr('catalogo.consultorio_1')}
             value={roomForm.name}
             onChange={e => setRoomForm((f) => ({ ...f, name: e.target.value }))} fullWidth />
-          <Input label="Código *" maxLength={20} placeholder="C-01"
+          <Input label={tr('common.codigo_2')} maxLength={20} placeholder="C-01"
             value={roomForm.code}
             onChange={e => setRoomForm((f) => ({ ...f, code: e.target.value }))} fullWidth />
           <Select
-            label="Servicio médico"
+            label={tr('catalogo.servicio_medico')}
             value={roomForm.medicalServiceId}
             onChange={val => setRoomForm((f) => ({ ...f, medicalServiceId: val }))}
             options={activeServiceOptions}
             fullWidth
           />
-          <Input label="Ubicación" maxLength={100} placeholder="Planta Baja - Ala A"
+          <Input label={tr('common.ubicacion')} maxLength={100} placeholder={tr('catalogo.planta_baja_ala_a')}
             value={roomForm.location}
             onChange={e => setRoomForm((f) => ({ ...f, location: e.target.value }))} fullWidth
             className="sm:col-span-2" />

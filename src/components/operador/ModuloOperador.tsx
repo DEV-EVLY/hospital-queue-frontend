@@ -11,6 +11,7 @@ import {
 import { consultingRoomsApi, medicalServicesApi, ticketsApi, getErrorMessage } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import type { ConsultingRoom, MedicalService, PriorityLevel, Ticket } from '../../types/api';
+import { tr, statusLabel } from '../../i18n';
 
 const minutesWaiting = (issuedAt: string): string => {
   const diff = Math.round((Date.now() - new Date(issuedAt).getTime()) / 60000);
@@ -94,7 +95,7 @@ export const ModuloOperador: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoom?.medicalServiceId, loadQueue]);
 
-  const serviceName = (id: string | null) => services.find(s => s.id === id)?.name ?? 'Servicio';
+  const serviceName = (id: string | null) => services.find(s => s.id === id)?.name ?? tr('common.servicio');
 
   const handleSelectRoom = (room: ConsultingRoom) => {
     setSelectedRoom(room);
@@ -106,12 +107,12 @@ export const ModuloOperador: React.FC = () => {
 
   const handleCallNext = async () => {
     if (!selectedRoom?.medicalServiceId) {
-      setError('Este consultorio no tiene un servicio médico asignado.');
+      setError(tr('operator.este_consultorio_no_tiene_servicio'));
       return;
     }
     const operatorId = localStorage.getItem('userId');
     if (!operatorId) {
-      setError('No se encontró usuario en sesión. Vuelva a iniciar sesión.');
+      setError(tr('operator.no_se_encontro_usuario_sesion'));
       return;
     }
     setLoading(true);
@@ -125,7 +126,7 @@ export const ModuloOperador: React.FC = () => {
       setCurrentTicket(ticket);
       loadQueue(selectedRoom.medicalServiceId);
     } catch (e: unknown) {
-      setError(getErrorMessage(e) || 'No hay más pacientes en espera');
+      setError(getErrorMessage(e) || tr('operator.no_hay_mas_pacientes'));
     } finally {
       setLoading(false);
     }
@@ -134,7 +135,7 @@ export const ModuloOperador: React.FC = () => {
   const handleRecall = async () => {
     if (!currentTicket) return;
     try { await ticketsApi.recall(currentTicket.id); }
-    catch (e: unknown) { setError(`Error al rellamar: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setError(tr('operator.error_rellamar_error', { error: getErrorMessage(e) })); }
   };
 
   const handleStartAttention = async () => {
@@ -142,7 +143,7 @@ export const ModuloOperador: React.FC = () => {
     try {
       const updated = await ticketsApi.startAttention(currentTicket.id);
       setCurrentTicket(updated);
-    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('common.error_error', { error: getErrorMessage(e) })); }
   };
 
   const handleCompleteAttention = async () => {
@@ -153,7 +154,7 @@ export const ModuloOperador: React.FC = () => {
       setShowCompleteModal(false);
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('common.error_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -164,7 +165,7 @@ export const ModuloOperador: React.FC = () => {
       await ticketsApi.markAbsent(currentTicket.id);
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: unknown) { setError(`Error: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('common.error_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -177,7 +178,7 @@ export const ModuloOperador: React.FC = () => {
       setDeriveServiceId('');
       setCurrentTicket(null);
       if (selectedRoom?.medicalServiceId) loadQueue(selectedRoom.medicalServiceId);
-    } catch (e: unknown) { setError(`Error al derivar: ${getErrorMessage(e)}`); }
+    } catch (e: unknown) { setError(tr('operator.error_derivar_error', { error: getErrorMessage(e) })); }
     finally { setLoading(false); }
   };
 
@@ -198,7 +199,7 @@ export const ModuloOperador: React.FC = () => {
             className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm font-medium"
           >
             <WifiOff size={15} className="shrink-0" />
-            <span>Sin conexión en tiempo real — reconectando... La cola puede no estar actualizada.</span>
+            <span>{tr('operator.sin_conexion_tiempo_real_reconectando')}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -225,15 +226,15 @@ export const ModuloOperador: React.FC = () => {
             <Stethoscope size={18} className="text-primary-700" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-surface-900">Estación del Profesional</h1>
-            <p className="text-xs text-surface-500">Gestión de consultorio y turnos</p>
+            <h1 className="text-sm font-bold text-surface-900">{tr('operator.estacion_profesional')}</h1>
+            <p className="text-xs text-surface-500">{tr('operator.gestion_consultorio_y_turnos')}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <ConnectionDot connected={sseConnected} />
-            <span className="text-xs text-surface-500">{sseConnected ? 'En vivo' : 'Reconectando'}</span>
+            <span className="text-xs text-surface-500">{sseConnected ? tr('app.vivo') : tr('operator.reconectando')}</span>
           </div>
 
           <Select
@@ -254,7 +255,7 @@ export const ModuloOperador: React.FC = () => {
         <div className="lg:col-span-2 flex flex-col gap-4">
           <Card padding="lg" className="flex-1">
             <CardHeader
-              title="Turno en Consultorio"
+              title={tr('operator.turno_consultorio')}
               subtitle={selectedRoom ? `${selectedRoom.name} · ${serviceName(selectedRoom.medicalServiceId)}` : ''}
               action={currentTicket && (
                 <StatusBadge status={currentTicket.status} />
@@ -274,13 +275,13 @@ export const ModuloOperador: React.FC = () => {
                   {/* Ticket header */}
                   <div className="flex items-start justify-between gap-4 p-5 rounded-xl bg-primary-50 border border-primary-100">
                     <div>
-                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-widest mb-1">Código</p>
+                      <p className="text-xs font-semibold text-primary-600 uppercase tracking-widest mb-1">{tr('common.codigo')}</p>
                       <div className="ticket-code text-5xl text-primary-900">
                         {currentTicket.ticketCode}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-surface-500 mb-1">Prioridad</p>
+                      <p className="text-xs font-semibold text-surface-500 mb-1">{tr('common.prioridad')}</p>
                       <PriorityBadge priority={currentTicket.priorityLevel} size="md" />
                       <p className="text-xs text-surface-400 mt-1 font-mono">{currentTicket.priorityPoints} pts</p>
                     </div>
@@ -295,7 +296,7 @@ export const ModuloOperador: React.FC = () => {
                       icon={<Bell size={16} />}
                       onClick={handleRecall}
                     >
-                      Rellamar
+                      {tr('operator.rellamar')}
                     </Button>
                     <Button
                       variant="success"
@@ -305,7 +306,7 @@ export const ModuloOperador: React.FC = () => {
                       icon={<Play size={16} />}
                       onClick={handleStartAttention}
                     >
-                      Iniciar
+                      {tr('operator.iniciar')}
                     </Button>
                     <Button
                       variant="primary"
@@ -315,7 +316,7 @@ export const ModuloOperador: React.FC = () => {
                       icon={<CheckCircle2 size={16} />}
                       onClick={() => setShowCompleteModal(true)}
                     >
-                      Finalizar
+                      {tr('operator.finalizar')}
                     </Button>
                   </div>
 
@@ -330,7 +331,7 @@ export const ModuloOperador: React.FC = () => {
                       onClick={handleMarkAbsent}
                       className="text-red-600 hover:bg-red-50 hover:text-red-700"
                     >
-                      Paciente Ausente
+                      {tr('operator.paciente_ausente')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -341,7 +342,7 @@ export const ModuloOperador: React.FC = () => {
                       onClick={() => { setDeriveServiceId(''); setShowDeriveModal(true); }}
                       className="text-purple-600 hover:bg-purple-50 hover:text-purple-700"
                     >
-                      Derivar a Servicio
+                      {tr('operator.derivar_a_servicio')}
                     </Button>
                   </div>
                 </motion.div>
@@ -357,9 +358,9 @@ export const ModuloOperador: React.FC = () => {
                     <User size={28} className="text-surface-300" />
                   </div>
                   <div className="text-center">
-                    <h3 className="text-base font-semibold text-surface-700">Sin turno activo</h3>
+                    <h3 className="text-base font-semibold text-surface-700">{tr('operator.sin_turno_activo')}</h3>
                     <p className="text-sm text-surface-400 mt-1 max-w-xs">
-                      Llame al siguiente paciente para comenzar la atención.
+                      {tr('operator.llame_siguiente_paciente_para_comenzar')}
                     </p>
                   </div>
                   <Button
@@ -369,7 +370,7 @@ export const ModuloOperador: React.FC = () => {
                     icon={<PhoneCall size={20} />}
                     onClick={handleCallNext}
                   >
-                    Llamar Siguiente
+                    {tr('operator.llamar_siguiente')}
                   </Button>
                 </motion.div>
               )}
@@ -382,7 +383,7 @@ export const ModuloOperador: React.FC = () => {
           <div className="flex items-center justify-between px-5 py-4 border-b border-surface-100">
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-surface-400" />
-              <span className="text-sm font-semibold text-surface-900">Cola de Espera</span>
+              <span className="text-sm font-semibold text-surface-900">{tr('operator.cola_espera')}</span>
               <span className="text-xs bg-surface-100 text-surface-600 px-2 py-0.5 rounded-full font-semibold">
                 {waitingQueue.length}
               </span>
@@ -399,7 +400,7 @@ export const ModuloOperador: React.FC = () => {
             <AnimatePresence initial={false}>
               {waitingQueue.length === 0 ? (
                 <p className="text-surface-400 text-center py-12 text-sm px-4">
-                  No hay pacientes en espera para este servicio.
+                  {tr('operator.no_hay_pacientes_espera_para')}
                 </p>
               ) : (
                 waitingQueue.map((item, idx) => (
@@ -438,20 +439,20 @@ export const ModuloOperador: React.FC = () => {
       <Modal
         open={showCompleteModal}
         onClose={() => setShowCompleteModal(false)}
-        title="Finalizar Atención"
+        title={tr('operator.finalizar_atencion')}
         description={`Turno: ${currentTicket?.ticketCode ?? ''}`}
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowCompleteModal(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowCompleteModal(false)}>{tr('common.cancelar')}</Button>
             <Button variant="primary" loading={loading} onClick={handleCompleteAttention}>
-              Confirmar y Cerrar
+              {tr('operator.confirmar_y_cerrar')}
             </Button>
           </>
         }
       >
         <p className="text-sm text-surface-600">
-          Al confirmar, el ticket pasa a estado <strong>Atendido</strong> y queda registrado en el sistema.
+          {tr('operator.confirmar_cierre', { status: statusLabel('ATTENDED') })}
         </p>
       </Modal>
 
@@ -459,25 +460,25 @@ export const ModuloOperador: React.FC = () => {
       <Modal
         open={showDeriveModal}
         onClose={() => setShowDeriveModal(false)}
-        title="Derivar Paciente"
+        title={tr('operator.derivar_paciente')}
         description={`Turno: ${currentTicket?.ticketCode ?? ''}`}
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowDeriveModal(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowDeriveModal(false)}>{tr('common.cancelar')}</Button>
             <Button
               variant="primary"
               loading={loading}
               disabled={!deriveServiceId}
               onClick={handleDeriveTicket}
             >
-              Confirmar Derivación
+              {tr('operator.confirmar_derivacion')}
             </Button>
           </>
         }
       >
         <Select
-          label="Servicio de destino"
+          label={tr('operator.servicio_destino')}
           fullWidth
           value={deriveServiceId}
           onChange={setDeriveServiceId}

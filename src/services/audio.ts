@@ -78,9 +78,11 @@ class SoundService {
       utterance.pitch = 1.05;
 
       const voices = window.speechSynthesis.getVoices();
-      const spanishVoice = voices.find(v => v.lang.startsWith('es') || v.lang.startsWith('es-419'));
-      if (spanishVoice) {
-        utterance.voice = spanishVoice;
+      // Voz del mismo idioma que el anuncio (es, en, de, pt, it); si no hay, el navegador elige la suya
+      const prefix = lang.slice(0, 2).toLowerCase();
+      const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
+      if (voice) {
+        utterance.voice = voice;
       }
 
       window.speechSynthesis.speak(utterance);

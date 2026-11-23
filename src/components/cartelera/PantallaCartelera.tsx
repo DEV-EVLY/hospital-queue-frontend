@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ticketsApi, medicalServicesApi, consultingRoomsApi } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { soundService } from '../../services/audio';
-import type { PriorityLevel, Ticket } from '../../types/api';
+import type { DeviceProfile, PriorityLevel, Ticket } from '../../types/api';
 import type {
   TicketCalledEvent, TicketDispensedEvent, AttentionCompletedEvent, ConnectionStatusEvent,
 } from '../../types/events';
 import { Activity, Volume2, VolumeX, Wifi, WifiOff, MapPin, X, Clock } from 'lucide-react';
+import { tr, formatDate, formatTime, getSpeechLang } from '../../i18n';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,15 +34,15 @@ interface WaitingTicket {
 
 export interface PantallaCarteleraProps {
   onExitCartelera: () => void;
+  /** Perfil del equipo: limita los servicios que se muestran (null o sin servicios = todos). */
+  profile?: DeviceProfile | null;
 }
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const TICKER_MSG =
-  import.meta.env.VITE_TICKER_MSG ??
-  'Hospital Nacional · Sistema de Gestión de Colas · Atiéndase con su número de turno · Conserve su ticket y permanezca atento a la pantalla';
+const tickerMessage = (): string => import.meta.env.VITE_TICKER_MSG ?? tr('cartelera.ticker');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,8 +87,8 @@ const matchesZone = (ticket: CalledTicket, zone: string | null): boolean => {
   );
 };
 
-const getSpanishDate = (): string => {
-  return new Date().toLocaleDateString('es-ES', {
+const getLongDate = (): string => {
+  return formatDate(new Date(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -121,7 +122,7 @@ const PRIORITY_COLOR: Record<PriorityLevel, string> = {
 // Component
 // ---------------------------------------------------------------------------
 
-export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCartelera }) => {
+export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCartelera, profile = null }) => {
   const [current, setCurrent]         = useState<CalledTicket | null>(null);
   const [history, setHistory]         = useState<CalledTicket[]>([]);
   const [waitingQueue, setWaitingQueue] = useState<WaitingTicket[]>([]);
@@ -137,11 +138,19 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
   const roomMapRef    = useRef(new Map<string, string>());
   const zoneFilter    = useRef(getZoneFilter()).current;
 
+  // Servicios que muestra esta pantalla (vacío = todos). La clave estable evita recargas innecesarias.
+  const serviceFilterKey = (profile?.serviceIds ?? []).slice().sort().join(',');
+  const serviceFilter    = serviceFilterKey ? serviceFilterKey.split(',') : [];
+  const serviceFilterRef = useRef<string[]>(serviceFilter);
+  serviceFilterRef.current = serviceFilter;
+  const allowsService = (id: string): boolean =>
+    serviceFilterRef.current.length === 0 || serviceFilterRef.current.includes(id);
+
   // Clock
   useEffect(() => {
     const tick = () => {
-      setTimeStr(new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      setDateStr(getSpanishDate());
+      setTimeStr(formatTime(new Date().toISOString(), true));
+      setDateStr(getLongDate());
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -162,7 +171,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       } catch { /* ok */ }
 
       try {
-        const data: Ticket[] = await ticketsApi.lastCalled(6);
+        const data: Ticket[] = await ticketsApi.lastCalled(6, serviceFilter);
         if (data.length > 0) {
           const mapped = data
             .map(t => mapEvent(t, serviceMapRef.current, roomMapRef.current))
@@ -175,20 +184,25 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       } catch { /* ok */ }
 
       try {
-        const waiting: Ticket[] = await ticketsApi.waitingQueue(20);
+        const waiting: Ticket[] = await ticketsApi.waitingQueue(20, serviceFilter);
         if (Array.isArray(waiting)) {
           setWaitingQueue(waiting.map(t => mapWaiting(t, serviceMapRef.current)));
         }
       } catch { /* ok */ }
     };
+    setCurrent(null);
+    setHistory([]);
+    setWaitingQueue([]);
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceFilterKey]);
 
   // SSE
   useEffect(() => {
     const es = getSocket('pantalla');
 
     const handleTicket = (payload: TicketCalledEvent) => {
+      if (!allowsService(payload.medicalServiceId)) return;
       const ticket = mapEvent(payload, serviceMapRef.current, roomMapRef.current);
       if (!matchesZone(ticket, zoneFilter)) return;
 
@@ -200,10 +214,9 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       setHistory(prev => [ticket, ...prev.filter(x => x.id !== ticket.id)].slice(0, 5));
 
       if (audioEnabled) {
-        const announcement =
-          payload.audioAnnouncement ??
-          `Turno ${ticket.ticketCode}, diríjase a ${ticket.roomName}`;
-        soundService.speakAnnouncement(announcement);
+        // El anuncio se genera en el idioma de la pantalla (el del servidor, si lo hubiera, está en español)
+        soundService.speakAnnouncement(
+          tr('cartelera.anuncio', { code: ticket.ticketCode, room: ticket.roomName }), getSpeechLang());
       }
     };
 
@@ -219,6 +232,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
     };
 
     const handleDispensed = (payload: TicketDispensedEvent) => {
+      if (!allowsService(payload.medicalServiceId)) return;
       const wt = mapWaiting(payload, serviceMapRef.current);
       setWaitingQueue(prev => {
         if (prev.some(x => x.id === wt.id)) return prev;
@@ -273,7 +287,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
       {!sseConnected && (
         <div className="absolute top-0 inset-x-0 z-50 flex items-center justify-center gap-3 bg-amber-500/95 text-amber-950 text-sm font-black py-2 px-4">
           <WifiOff className="w-4 h-4 shrink-0" />
-          <span>Sistema sin conexión en tiempo real — reconectando...</span>
+          <span>{tr('cartelera.sistema_sin_conexion_tiempo_real')}</span>
         </div>
       )}
 
@@ -287,10 +301,10 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-widest text-sky-100 uppercase">
-              Hospital Nacional
+              {tr('cartelera.hospital_nacional')}
             </h1>
             <p className="text-xs font-bold text-sky-500 uppercase tracking-widest flex items-center gap-2">
-              Sala de Espera — Llamado a Consultorios
+              {tr('cartelera.subtitulo')}
               {zoneFilter && (
                 <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md font-mono lowercase">
                   zona: {zoneFilter}
@@ -316,7 +330,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
               <>
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
                 <Wifi className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-black text-emerald-400 tracking-widest">EN VIVO</span>
+                <span className="text-xs font-black text-emerald-400 tracking-widest uppercase">{tr('app.vivo')}</span>
               </>
             ) : (
               <>
@@ -335,17 +349,17 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
                 ? 'bg-sky-500/20 border-sky-400/60 text-sky-300 hover:bg-sky-500/30'
                 : 'bg-slate-800/60 border-slate-600 text-slate-400 hover:border-slate-500'
             }`}
-            title={audioEnabled ? 'Silenciar audio' : 'Activar audio'}
+            title={audioEnabled ? tr('cartelera.audio_silenciar') : tr('cartelera.audio_activar')}
           >
             {audioEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-            <span>{audioEnabled ? 'Sonido ON' : 'Sonido OFF'}</span>
+            <span>{audioEnabled ? tr('cartelera.sonido_on') : tr('cartelera.sonido_off')}</span>
           </button>
 
           {/* Exit */}
           <button
             onClick={onExitCartelera}
             className="p-2.5 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-400 hover:text-white hover:border-slate-500 transition-all"
-            title="Salir de Cartelera"
+            title={tr('cartelera.salir_cartelera')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -404,7 +418,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
                     </div>
                     <div className="flex-1">
                       <p className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-0.5">
-                        PASAR AL CONSULTORIO
+                        {tr('cartelera.pasar_consultorio')}
                       </p>
                       <p
                         className="font-black text-primary-400 text-sky-300 leading-none"
@@ -415,7 +429,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
                     </div>
                     {current.location && (
                       <div className="text-right shrink-0">
-                        <p className="text-xs text-slate-500">Ubicación</p>
+                        <p className="text-xs text-slate-500">{tr('common.ubicacion')}</p>
                         <p className="text-lg font-bold text-sky-200">{current.location}</p>
                       </div>
                     )}
@@ -423,7 +437,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
 
                   {/* Called-at timestamp */}
                   <p className="text-sm font-mono text-slate-500">
-                    Llamado: {current.calledAt?.substring(11, 19) || timeStr}
+                    {tr('cartelera.llamado', { time: current.calledAt ? formatTime(current.calledAt, true) : timeStr })}
                   </p>
                 </motion.div>
               </motion.div>
@@ -436,7 +450,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
                 className="flex flex-col items-center gap-4 text-slate-600"
               >
                 <Activity className="w-24 h-24 opacity-30 animate-pulse" />
-                <p className="text-3xl font-bold">Esperando próximos llamados...</p>
+                <p className="text-3xl font-bold">{tr('cartelera.esperando_proximos_llamados')}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -448,7 +462,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-sky-400" />
               <h2 className="text-base font-black uppercase tracking-widest text-slate-300">
-                En Espera
+                {tr('common.espera')}
               </h2>
             </div>
             <span className="text-xs font-mono text-sky-500 font-bold bg-sky-950/50 border border-sky-800/40 rounded-lg px-2 py-0.5">
@@ -467,7 +481,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
                   className="flex flex-col items-center justify-center gap-2 py-10 text-slate-600"
                 >
                   <Clock className="w-10 h-10 opacity-30" />
-                  <span className="text-sm font-semibold">Sin turnos en espera</span>
+                  <span className="text-sm font-semibold">{tr('cartelera.sin_turnos_espera')}</span>
                 </motion.li>
               ) : (
                 waitingQueue.map((wt, i) => {
@@ -513,7 +527,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
 
           {/* Bottom reminder */}
           <div className="shrink-0 p-4 rounded-2xl bg-sky-950/40 border border-sky-800/30 text-xs text-sky-300 text-center leading-relaxed">
-            Al escuchar su número, acérquese con su DNI en mano al consultorio indicado.
+            {tr('cartelera.escuchar_su_numero_acerquese_con')}
           </div>
         </div>
       </main>
@@ -525,7 +539,7 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
         </span>
         <div className="overflow-hidden flex-1 relative">
           <p className="inline-block text-base font-bold whitespace-nowrap animate-ticker">
-            {TICKER_MSG}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{TICKER_MSG}
+            {tickerMessage()}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{tickerMessage()}
           </p>
         </div>
       </footer>

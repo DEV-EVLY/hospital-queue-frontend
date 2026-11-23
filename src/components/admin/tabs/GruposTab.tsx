@@ -3,13 +3,13 @@ import {
   Plus, RefreshCw, Edit2, Trash2, Save, ChevronRight, ChevronDown, FolderTree, FolderPlus, UserPlus, UserMinus,
 } from 'lucide-react';
 import { Card, CardHeader, Badge, Button, Input, Modal, Select } from '../../ui';
-import { userGroupsApi, usersApi, getErrorMessage } from '../../../services/api';
+import { userGroupsApi, usersApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
-import type { UserGroup as Group, User } from '../../../types/api';
+import type { UserGroup as Group, UserGroupMembership, User, MedicalService, Role } from '../../../types/api';
+import { tr, trp, roleLabel } from '../../../i18n';
 
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Administrador', SUPERVISOR: 'Supervisor', DOCTOR: 'Médico', OPERATOR: 'Operador', KIOSK: 'Kiosko',
-};
+/** Solo personal asistencial se organiza en grupos (no administradores ni cuentas de kiosko). */
+const GROUP_ROLES: Role[] = ['OPERATOR', 'SUPERVISOR', 'DOCTOR'];
 
 const BLANK_FORM = { code: '', name: '', description: '', parentId: '' };
 
@@ -17,6 +17,8 @@ export const GruposTab: React.FC = () => {
   const [groups,     setGroups]     = useState<Group[]>([]);
   const [allUsers,   setAllUsers]   = useState<User[]>([]);
   const [members,    setMembers]    = useState<User[]>([]);
+  const [memberships, setMemberships] = useState<UserGroupMembership[]>([]);
+  const [services,   setServices]   = useState<MedicalService[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed,  setCollapsed]  = useState<Set<string>>(new Set());
   const [error,      setError]      = useState<string | null>(null);
@@ -33,19 +35,24 @@ export const GruposTab: React.FC = () => {
   // ── data ───────────────────────────────────────────────────────────────────
 
   const loadGroups = async () => {
-    try { setGroups(await userGroupsApi.list()); }
-    catch (e: unknown) { setError(`Error al cargar grupos: ${getErrorMessage(e)}`); }
+    try {
+      const [g, m] = await Promise.all([userGroupsApi.list(), userGroupsApi.memberships()]);
+      setGroups(g);
+      setMemberships(m);
+    } catch (e: unknown) { setError(tr('grupos.error_cargar_grupos_error', { error: getErrorMessage(e) })); }
   };
 
   const loadMembers = async (id: string) => {
     try { setMembers(await userGroupsApi.members(id)); }
-    catch (e: unknown) { setError(`Error al cargar miembros: ${getErrorMessage(e)}`); }
+    catch (e: unknown) { setError(tr('grupos.error_cargar_miembros_error', { error: getErrorMessage(e) })); }
   };
 
   useEffect(() => {
     loadGroups();
+    medicalServicesApi.list().then(s => setServices(s.filter(x => x.active)))
+      .catch((e: unknown) => setError(tr('common.error_cargar_servicios_error', { error: getErrorMessage(e) })));
     usersApi.list(0, 500).then(d => setAllUsers(d.content))
-      .catch((e: unknown) => setError(`Error al cargar usuarios: ${getErrorMessage(e)}`));
+      .catch((e: unknown) => setError(tr('common.error_cargar_usuarios_error', { error: getErrorMessage(e) })));
   }, []);
 
   useEffect(() => {
@@ -82,7 +89,7 @@ export const GruposTab: React.FC = () => {
 
   const parentOptions = useMemo(() => {
     const blocked = editingId ? descendantIds(editingId) : new Set<string>();
-    const opts: { value: string; label: string }[] = [{ value: '', label: 'Sin grupo padre (nivel principal)' }];
+    const opts: { value: string; label: string }[] = [{ value: '', label: tr('grupos.sin_padre') }];
     const walk = (parent: string | null, depth: number) => {
       (children.get(parent) ?? []).forEach(g => {
         if (!blocked.has(g.id)) opts.push({ value: g.id, label: `${'— '.repeat(depth)}${g.name}` });
@@ -110,7 +117,15 @@ export const GruposTab: React.FC = () => {
 
   const saveGroup = async () => {
     if (!form.name.trim() || (!editingId && !form.code.trim())) {
-      setModalErr(editingId ? 'El nombre es obligatorio.' : 'Código y nombre son obligatorios.'); return;
+      setModalErr(editingId ? tr('grupos.nombre_obligatorio') : tr('grupos.codigo_nombre_obligatorios')); return;
+    }
+    if (editingId && form.parentId && form.parentId !== (byId.get(editingId)?.parentId ?? '')) {
+      const inParent = new Set(memberships.filter(m => m.groupId === form.parentId).map(m => m.userId));
+      const missing = memberships.filter(m => m.groupId === editingId && !inParent.has(m.userId)).length;
+      if (missing > 0) {
+        setModalErr(trp('grupos.mover_bloqueado', missing, { parent: byId.get(form.parentId)?.name ?? '' }));
+        return;
+      }
     }
     setModalErr(null);
     const payload = {
@@ -132,12 +147,12 @@ export const GruposTab: React.FC = () => {
   };
 
   const deleteGroup = async (g: Group) => {
-    if (!confirm(`¿Eliminar el grupo "${g.name}"? Se quitarán sus miembros del grupo (los usuarios no se eliminan).`)) return;
+    if (!confirm(tr('grupos.eliminar_grupo_name_se_quitaran', { name: g.name }))) return;
     try {
       await userGroupsApi.remove(g.id);
       if (selectedId === g.id) setSelectedId(null);
       await loadGroups();
-    } catch (e: unknown) { setError(getErrorMessage(e).includes('subgroups') ? 'El grupo tiene subgrupos. Muévelos o elimínalos primero.' : getErrorMessage(e)); }
+    } catch (e: unknown) { setError(getErrorMessage(e)); }
   };
 
   // ── member actions ─────────────────────────────────────────────────────────
@@ -153,6 +168,10 @@ export const GruposTab: React.FC = () => {
 
   const removeMember = async (userId: string) => {
     if (!selectedId) return;
+    const below = descendantIds(selectedId);
+    below.delete(selectedId);
+    const affected = memberships.filter(m => m.userId === userId && below.has(m.groupId)).length;
+    if (affected > 0 && !confirm(trp('grupos.confirm_quitar_usuario', affected))) return;
     try {
       await userGroupsApi.removeMember(selectedId, userId);
       await Promise.all([loadMembers(selectedId), loadGroups()]);
@@ -160,10 +179,37 @@ export const GruposTab: React.FC = () => {
   };
 
   const memberIds = new Set(members.map(m => m.id));
+  const parentGroup = selected?.parentId ? byId.get(selected.parentId) ?? null : null;
+  // Un subgrupo solo admite usuarios que ya pertenecen a su grupo padre
+  const parentMemberIds = parentGroup
+    ? new Set(memberships.filter(m => m.groupId === parentGroup.id).map(m => m.userId))
+    : null;
+  const candidates = allUsers.filter(u =>
+    u.active && GROUP_ROLES.includes(u.role) && !memberIds.has(u.id)
+    && (parentMemberIds === null || parentMemberIds.has(u.id)));
+  const hasServices = (selected?.serviceIds.length ?? 0) > 0;
+  // Servicios que se pueden elegir: todos (grupo principal) o solo los del padre (subgrupo)
+  const serviceChoices = parentGroup
+    ? services.filter(s => parentGroup.serviceIds.includes(s.id))
+    : services;
+  const serviceName = (id: string) => services.find(s => s.id === id)?.name ?? id.slice(0, 8);
+
+  const toggleService = async (serviceId: string) => {
+    if (!selected) return;
+    const has = selected.serviceIds.includes(serviceId);
+    if (has) {
+      const below = descendantIds(selected.id);
+      below.delete(selected.id);
+      const affected = groups.filter(g => below.has(g.id) && g.serviceIds.includes(serviceId)).length;
+      if (affected > 0 && !confirm(trp('grupos.confirm_quitar_servicio', affected, { service: serviceName(serviceId) }))) return;
+    }
+    const next = has ? selected.serviceIds.filter(id => id !== serviceId) : [...selected.serviceIds, serviceId];
+    try { await userGroupsApi.setServices(selected.id, next); await loadGroups(); }
+    catch (e: unknown) { setError(getErrorMessage(e)); }
+  };
   const addOptions = [
-    { value: '', label: 'Selecciona un usuario…' },
-    ...allUsers.filter(u => u.active && !memberIds.has(u.id))
-      .map(u => ({ value: u.id, label: `${u.fullName} (${u.username})` })),
+    { value: '', label: candidates.length === 0 ? tr('grupos.sin_usuarios_disponibles') : tr('grupos.selecciona_usuario') },
+    ...candidates.map(u => ({ value: u.id, label: `${u.fullName} (${u.username})` })),
   ];
 
   const toggleCollapse = (id: string) =>
@@ -194,20 +240,20 @@ export const GruposTab: React.FC = () => {
           <div className="flex-1 min-w-0 py-2">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm text-surface-900 truncate">{g.name}</span>
-              {!g.active && <Badge variant="gray">Inactivo</Badge>}
+              {!g.active && <Badge variant="gray">{tr('common.inactivo')}</Badge>}
             </div>
-            <div className="text-[11px] text-surface-400 font-mono">{g.code} · {g.memberCount} miembro{g.memberCount === 1 ? '' : 's'}</div>
+            <div className="text-[11px] text-surface-400 font-mono">{g.code} · {trp('grupos.miembros', g.memberCount)} · {trp('grupos.servicios', g.serviceIds.length)}</div>
           </div>
           <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <button title="Agregar subgrupo" onClick={e => { e.stopPropagation(); openCreate(g.id); }}
+            <button title={tr('grupos.agregar_subgrupo')} onClick={e => { e.stopPropagation(); openCreate(g.id); }}
               className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50"><FolderPlus className="w-4 h-4" /></button>
-            <button title="Editar" onClick={e => { e.stopPropagation(); openEdit(g); }}
+            <button title={tr('grupos.editar')} onClick={e => { e.stopPropagation(); openEdit(g); }}
               className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50"><Edit2 className="w-4 h-4" /></button>
-            <button title={g.active ? 'Desactivar' : 'Activar'} onClick={e => { e.stopPropagation(); toggleGroup(g); }}
+            <button title={g.active ? tr('common.desactivar') : tr('common.activar')} onClick={e => { e.stopPropagation(); toggleGroup(g); }}
               className="px-1.5 text-[11px] font-semibold rounded-lg text-surface-400 hover:text-amber-600 hover:bg-amber-50">
-              {g.active ? 'Desactivar' : 'Activar'}
+              {g.active ? tr('common.desactivar') : tr('common.activar')}
             </button>
-            <button title="Eliminar" onClick={e => { e.stopPropagation(); deleteGroup(g); }}
+            <button title={tr('grupos.eliminar')} onClick={e => { e.stopPropagation(); deleteGroup(g); }}
               className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
           </div>
         </div>
@@ -227,17 +273,17 @@ export const GruposTab: React.FC = () => {
         <Card padding="none" className="lg:col-span-2">
           <div className="px-5 pt-5 pb-4 flex items-center justify-between border-b border-surface-100">
             <div>
-              <h3 className="text-sm font-semibold text-surface-900">Grupos de Usuarios</h3>
-              <p className="text-xs text-surface-500 mt-0.5">{groups.length} grupo{groups.length === 1 ? '' : 's'} · organización jerárquica</p>
+              <h3 className="text-sm font-semibold text-surface-900">{tr('grupos.grupos_usuarios')}</h3>
+              <p className="text-xs text-surface-500 mt-0.5">{trp('grupos.grupos', groups.length)} · {tr('grupos.organizacion_jerarquica')}</p>
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" icon={<RefreshCw className="w-4 h-4" />} onClick={loadGroups} />
-              <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => openCreate(null)}>Nuevo</Button>
+              <Button size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => openCreate(null)}>{tr('common.nuevo')}</Button>
             </div>
           </div>
           <div className="p-3 max-h-[560px] overflow-y-auto">
             {roots.length === 0
-              ? <p className="py-10 text-center text-sm text-surface-400">Aún no hay grupos. Crea el primero con “Nuevo”.</p>
+              ? <p className="py-10 text-center text-sm text-surface-400">{tr('grupos.aun_no_hay_grupos_crea')}</p>
               : roots.map(g => renderNode(g, 0))}
           </div>
         </Card>
@@ -247,7 +293,7 @@ export const GruposTab: React.FC = () => {
           {!selected ? (
             <div className="py-20 text-center text-sm text-surface-400 flex flex-col items-center gap-2">
               <FolderTree className="w-8 h-8 text-surface-300" />
-              Selecciona un grupo para ver y administrar sus miembros
+              {tr('grupos.selecciona_grupo_para_ver_y')}
             </div>
           ) : (
             <>
@@ -255,19 +301,57 @@ export const GruposTab: React.FC = () => {
                 <CardHeader title={selected.name} subtitle={pathOf(selected.id)} />
                 {selected.description && <p className="text-sm text-surface-600 -mt-2">{selected.description}</p>}
               </div>
+              <div className="px-6 py-4 border-b border-surface-100">
+                <p className="text-xs font-semibold uppercase tracking-wider text-surface-500 mb-2">
+                  {tr('grupos.1_servicios_que_atiende_este')}
+                </p>
+                {serviceChoices.length === 0 ? (
+                  <p className="text-xs text-surface-400">
+                    {parentGroup
+                      ? tr('grupos.padre_sin_servicios', { parent: parentGroup.name })
+                      : tr('grupos.sin_servicios_activos')}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {serviceChoices.map(s => {
+                      const on = selected.serviceIds.includes(s.id);
+                      return (
+                        <label key={s.id}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer select-none transition-colors ${
+                            on ? 'border-primary-300 bg-primary-50 text-primary-800' : 'border-surface-200 text-surface-600 hover:bg-surface-50'
+                          }`}>
+                          <input type="checkbox" checked={on} onChange={() => toggleService(s.id)}
+                            className="w-4 h-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
+                          {s.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <div className="px-6 py-4 flex flex-wrap items-end gap-3 border-b border-surface-100">
+                <p className="w-full text-xs font-semibold uppercase tracking-wider text-surface-500 -mb-1">
+                  {tr('grupos.2_personas_grupo_operadores_supervisores')}
+                </p>
                 <div className="flex-1 min-w-[220px]">
-                  <Select label="Agregar miembro" value={userToAdd} onChange={setUserToAdd} options={addOptions} fullWidth />
+                  <Select
+                    label={parentGroup ? tr('grupos.agregar_miembro_del_grupo', { parent: parentGroup.name }) : tr('grupos.agregar_miembro')}
+                    value={userToAdd} onChange={setUserToAdd} options={addOptions} fullWidth
+                    disabled={!hasServices}
+                    hint={!hasServices ? tr('grupos.primero_servicios') : parentGroup && candidates.length === 0
+                      ? tr('grupos.solo_miembros_del_padre', { parent: parentGroup.name })
+                      : undefined}
+                  />
                 </div>
-                <Button size="sm" icon={<UserPlus className="w-4 h-4" />} disabled={!userToAdd} onClick={addMember} className="mb-0.5">
-                  Agregar
+                <Button size="sm" icon={<UserPlus className="w-4 h-4" />} disabled={!userToAdd || !hasServices} onClick={addMember} className="mb-0.5">
+                  {tr('common.agregar')}
                 </Button>
               </div>
               <div className="overflow-x-auto max-h-[420px]">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr className="border-b border-surface-100">
-                      <TH>Usuario</TH><TH>Nombre completo</TH><TH>Rol</TH><TH className="text-right">Quitar</TH>
+                      <TH>{tr('common.usuario')}</TH><TH>{tr('common.nombre_completo')}</TH><TH>{tr('common.rol')}</TH><TH className="text-right">{tr('grupos.quitar')}</TH>
                     </tr>
                   </thead>
                   <tbody>
@@ -275,9 +359,9 @@ export const GruposTab: React.FC = () => {
                       <tr key={m.id} className="border-b border-surface-100 hover:bg-surface-50 transition-colors">
                         <TD><code className="text-xs font-mono font-semibold text-primary-700">{m.username}</code></TD>
                         <TD className="font-semibold text-surface-900">{m.fullName}</TD>
-                        <TD><Badge variant="primary">{ROLE_LABELS[m.role] ?? m.role}</Badge></TD>
+                        <TD><Badge variant="primary">{roleLabel(m.role)}</Badge></TD>
                         <TD className="text-right">
-                          <button onClick={() => removeMember(m.id)} title="Quitar del grupo"
+                          <button onClick={() => removeMember(m.id)} title={tr('grupos.quitar_grupo')}
                             className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                             <UserMinus className="w-4 h-4" />
                           </button>
@@ -285,7 +369,7 @@ export const GruposTab: React.FC = () => {
                       </tr>
                     ))}
                     {members.length === 0 && (
-                      <tr><td colSpan={4} className="px-4 py-8 text-center text-surface-400 text-sm">Este grupo aún no tiene miembros directos</td></tr>
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-surface-400 text-sm">{tr('grupos.este_grupo_aun_no_tiene')}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -298,30 +382,30 @@ export const GruposTab: React.FC = () => {
       <Modal
         open={showModal}
         onClose={() => setShowModal(false)}
-        title={editingId ? 'Editar Grupo' : 'Nuevo Grupo'}
-        description="Los grupos organizan usuarios; un grupo puede estar dentro de otro"
+        title={editingId ? tr('grupos.editar_grupo_titulo') : tr('grupos.nuevo_grupo_titulo')}
+        description={tr('grupos.grupos_organizan_usuarios_grupo_puede')}
         size="md"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>{tr('common.cancelar')}</Button>
             <Button icon={<Save className="w-4 h-4" />} onClick={saveGroup}>
-              {editingId ? 'Guardar Cambios' : 'Crear Grupo'}
+              {editingId ? tr('common.guardar_cambios') : tr('grupos.crear_grupo')}
             </Button>
           </>
         }
       >
         <FormError msg={modalErr} onDismiss={() => setModalErr(null)} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Código *" placeholder="PED" maxLength={30} disabled={!!editingId}
+          <Input label={tr('common.codigo_2')} placeholder="PED" maxLength={30} disabled={!!editingId}
             value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} fullWidth />
-          <Input label="Nombre *" maxLength={100} placeholder="Pediatría"
+          <Input label={tr('common.nombre_2')} maxLength={100} placeholder={tr('grupos.pediatria')}
             value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} fullWidth />
           <div className="sm:col-span-2">
-            <Select label="Grupo padre" value={form.parentId}
+            <Select label={tr('grupos.grupo_padre')} value={form.parentId}
               onChange={v => setForm(f => ({ ...f, parentId: v }))} options={parentOptions} fullWidth />
           </div>
           <div className="sm:col-span-2">
-            <Input label="Descripción" placeholder="Descripción opcional" maxLength={255}
+            <Input label={tr('common.descripcion')} placeholder={tr('common.descripcion_opcional')} maxLength={255}
               value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} fullWidth />
           </div>
         </div>

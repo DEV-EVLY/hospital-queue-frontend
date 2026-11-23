@@ -73,6 +73,8 @@ export interface UserGroup {
   active: boolean;
   /** Solo miembros directos (no incluye subgrupos) */
   memberCount: number;
+  /** Servicios médicos que atiende el grupo (un subgrupo solo puede elegir entre los de su padre) */
+  serviceIds: UUID[];
   createdAt: ISODateTime;
 }
 /** `code` es obligatorio al crear y se ignora al editar */
@@ -392,4 +394,40 @@ export interface OfflineSyncItem {
   lastError: string | null;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+}
+
+// ── Dispositivos (kioskos y carteleras) ──────────────────────────────────────
+
+export type DeviceType = 'KIOSK' | 'DISPLAY';
+export type DeviceAuditEvent =
+  | 'PIN_CHANGED' | 'PIN_FAILED' | 'PIN_LOCKED' | 'PIN_LOCK_RESET' | 'DEVICE_PAIRED' | 'PROFILE_CHANGED';
+
+export interface DeviceProfile {
+  id: UUID;
+  name: string;
+  type: DeviceType;
+  /** Código de idioma (es, en, de, pt, it, qu). */
+  language: string;
+  active: boolean;
+  /** Vacío = todos los servicios. */
+  serviceIds: UUID[];
+}
+export interface DeviceProfileRequest {
+  name: string;
+  type: DeviceType;
+  language: string;
+  active: boolean;
+  serviceIds: UUID[];
+}
+export interface DeviceStatus { pinConfigured: boolean; locked: boolean; kioskProfiles: number; displayProfiles: number }
+/** Perfil + token que acredita ante el servidor que el equipo está vinculado a él. */
+export interface DevicePairResult { profile: DeviceProfile; token: string }
+export interface DeviceUnlockResult { token: string; expiresInSeconds: number }
+export interface DeviceAuditEntry {
+  id: UUID;
+  event: DeviceAuditEvent;
+  profileId: UUID | null;
+  profileName: string | null;
+  detail: string | null;
+  createdAt: ISODateTime;
 }
