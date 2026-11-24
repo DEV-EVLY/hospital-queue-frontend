@@ -54,6 +54,11 @@ export interface PriorityUpdatedEvent {
 export interface ConnectionStatusEvent {
   room: string;
   connected: boolean;
+  /** connected = true: la conexión vuelve tras una caída; el servidor no reenvía lo perdido, hay que recargar. */
+  recovered?: boolean;
+  /** connected = false: nº de intento de reconexión y espera hasta el siguiente. */
+  attempt?: number;
+  retryInMs?: number;
 }
 
 /** Nombre del evento → tipo de su payload */

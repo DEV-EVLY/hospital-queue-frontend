@@ -1,15 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyRound, MonitorSmartphone, Pencil, Plus, Trash2 } from 'lucide-react';
-import { Badge, Button, Card, Input, Modal, Select, Spinner } from '../../ui';
+import { Badge, Button, Card, Checkbox, Input, Modal, Pagination, Select, Spinner } from '../../ui';
 import { devicesApi, getErrorMessage, medicalServicesApi, userGroupsApi } from '../../../services/api';
 import type {
-  DeviceAuditEntry, DeviceProfile, DeviceProfileRequest, DeviceStatus, DeviceType, MedicalService, UserGroup,
+  DeviceAuditEntry, DeviceProfile, DeviceProfileRequest, DeviceStatus, DeviceType, MedicalService, PageResponse, UserGroup,
 } from '../../../types/api';
 import { LANGUAGES, formatDate, formatTime, tr, trp } from '../../../i18n';
 import { FormError, TD, TH } from './_shared';
 
 const PIN_RE = /^[0-9]{4,8}$/;
 const TYPES: DeviceType[] = ['KIOSK', 'DISPLAY'];
+const AUDIT_PAGE_SIZE = 10;
 
 const emptyForm = (): DeviceProfileRequest => ({
   name: '', type: 'KIOSK', language: 'es', active: true, serviceIds: [],
@@ -20,7 +21,8 @@ export const PantallasTab: React.FC = () => {
   const [profiles, setProfiles] = useState<DeviceProfile[]>([]);
   const [services, setServices] = useState<MedicalService[]>([]);
   const [groups, setGroups]     = useState<UserGroup[]>([]);
-  const [audit, setAudit]       = useState<DeviceAuditEntry[]>([]);
+  const [audit, setAudit]       = useState<PageResponse<DeviceAuditEntry> | null>(null);
+  const auditPageRef            = useRef(0);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
 
@@ -42,7 +44,7 @@ export const PantallasTab: React.FC = () => {
     try {
       const [st, pr, sv, gr, au] = await Promise.all([
         devicesApi.status(), devicesApi.profiles(), medicalServicesApi.list(),
-        userGroupsApi.list(), devicesApi.audit(30),
+        userGroupsApi.list(), devicesApi.audit(auditPageRef.current, AUDIT_PAGE_SIZE),
       ]);
       setStatus(st); setProfiles(pr); setServices(sv); setGroups(gr); setAudit(au);
     } catch (e) {
@@ -53,6 +55,17 @@ export const PantallasTab: React.FC = () => {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  /** Cambia de página del registro de actividad (el resto de la pantalla no se recarga). */
+  const changeAuditPage = async (page: number) => {
+    try {
+      const next = await devicesApi.audit(page, AUDIT_PAGE_SIZE);
+      auditPageRef.current = page;
+      setAudit(next);
+    } catch (e) {
+      setError(getErrorMessage(e));
+    }
+  };
 
   const serviceName = (id: string) => services.find(s => s.id === id)?.name ?? id;
 
@@ -257,11 +270,11 @@ export const PantallasTab: React.FC = () => {
       {/* ── Actividad ── */}
       <Card className="flex flex-col gap-3">
         <h2 className="text-base font-bold text-surface-900">{tr('devices.actividad')}</h2>
-        {audit.length === 0 ? (
+        {!audit || audit.content.length === 0 ? (
           <p className="text-sm text-surface-500">{tr('devices.sin_actividad')}</p>
         ) : (
           <ul className="divide-y divide-surface-100 text-sm">
-            {audit.map(a => (
+            {audit.content.map(a => (
               <li key={a.id} className="py-2 flex items-center justify-between gap-4">
                 <span className="text-surface-800">
                   <span className="font-semibold">{tr(`devices.evento.${a.event}`)}</span>
@@ -274,6 +287,10 @@ export const PantallasTab: React.FC = () => {
               </li>
             ))}
           </ul>
+        )}
+        {audit && (
+          <Pagination page={audit.page} size={audit.size} totalElements={audit.totalElements}
+            totalPages={audit.totalPages} onPageChange={p => { void changeAuditPage(p); }} />
         )}
       </Card>
 
@@ -313,10 +330,8 @@ export const PantallasTab: React.FC = () => {
             <p className="text-xs text-surface-500">{tr('devices.servicios_ayuda')}</p>
             <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto border border-surface-200 rounded-lg p-2">
               {services.filter(s => s.active || form.serviceIds.includes(s.id)).map(s => (
-                <label key={s.id} className="flex items-center gap-2 text-sm text-surface-800 cursor-pointer px-2 py-1 rounded hover:bg-surface-50">
-                  <input type="checkbox" checked={form.serviceIds.includes(s.id)} onChange={() => toggleService(s.id)} />
-                  {s.name}
-                </label>
+                <Checkbox key={s.id} variant="card" label={s.name} checked={form.serviceIds.includes(s.id)}
+                  onChange={() => toggleService(s.id)} />
               ))}
             </div>
             {groups.some(g => g.serviceIds.length > 0) && (
@@ -327,10 +342,8 @@ export const PantallasTab: React.FC = () => {
             )}
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-surface-800 cursor-pointer">
-            <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-            {tr('common.activo')}
-          </label>
+          <Checkbox label={tr('common.activo')} checked={form.active}
+            onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
         </div>
       </Modal>
     </div>

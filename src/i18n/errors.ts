@@ -56,6 +56,11 @@ const RULES: Rule[] = [
   { re: /^The device profile is inactive/i,               key: 'errors.device_profile_inactive' },
   { re: /^Device profile not found/i,                     key: 'errors.not_found.device_profile' },
   { re: /^language must be one of/i,                      key: 'errors.invalid_language' },
+  { re: /^Cannot deactivate the last active administrator/i, key: 'errors.last_admin' },
+  { re: /^You do not belong to any group/i,               key: 'errors.no_group_assigned' },
+  { re: /^You are not assigned to this service/i,         key: 'errors.service_not_assigned' },
+  { re: /^The record was modified by someone else/i,      key: 'errors.concurrent_modification' },
+  { re: /^format must be one of/i,                        key: 'errors.format_invalid' },
 ];
 
 /** Mensajes de las validaciones de campo (Bean Validation y los propios de cada DTO). */

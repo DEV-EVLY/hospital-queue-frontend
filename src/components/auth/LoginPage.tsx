@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Lock, User, AlertCircle, Activity } from 'lucide-react';
+import { Lock, User, AlertCircle, Activity, Eye, EyeOff } from 'lucide-react';
 import { Button, Input, Card, LanguageSelector } from '../ui';
 import { authApi, getErrorMessage, ApiError } from '../../services/api';
+import { DemoCredentials } from './DemoCredentials';
 import { tr } from '../../i18n';
 
 interface LoginPageProps {
@@ -12,6 +13,7 @@ interface LoginPageProps {
 export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
 
@@ -83,11 +85,23 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
 
             <Input
               label={tr('login.contrasena')}
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               autoComplete="current-password"
               fullWidth
               icon={<Lock size={15} />}
+              iconEnd={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(s => !s)}
+                  aria-label={showPassword ? tr('login.ocultar_contrasena') : tr('login.mostrar_contrasena')}
+                  aria-pressed={showPassword}
+                  title={showPassword ? tr('login.ocultar_contrasena') : tr('login.mostrar_contrasena')}
+                  className="text-surface-400 hover:text-surface-700 transition-colors flex items-center"
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              }
               value={password}
               onChange={e => { setPassword(e.target.value); if (error) setError(null); }}
               disabled={loading}
@@ -120,6 +134,9 @@ export const LoginPage = ({ onLoginSuccess }: LoginPageProps) => {
         <p className="text-center text-xs text-surface-400 mt-6">
           {tr('login.acceso_restringido_solo_personal_autorizad')}
         </p>
+        <div className="flex justify-center mt-3">
+          <DemoCredentials />
+        </div>
       </motion.div>
     </div>
   );

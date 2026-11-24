@@ -49,6 +49,8 @@ export interface LoginResponse {
   username: string;
   fullName: string;
   role: Role;
+  /** Servicios que puede atender; null = sin restricción (ADMIN / SUPERVISOR). */
+  serviceIds: UUID[] | null;
 }
 
 export interface User {
@@ -340,7 +342,13 @@ export interface DashboardReport {
   priorityDistribution: Record<string, number>;
   /** hora (0-23, hora local) → cantidad de turnos */
   hourlyDemand: Record<string, number>;
+  /** Espera por hora de emisión (solo turnos con espera conocida) */
+  waitByHour: HourWait[];
+  /** Espera por servicio y hora de emisión: base del mapa de calor */
+  waitByServiceHour: ServiceHourWait[];
 }
+export interface HourWait { hour: number; tickets: number; avgWaitMinutes: number; maxWaitMinutes: number }
+export interface ServiceHourWait extends HourWait { serviceCode: string; serviceName: string }
 export interface ReportFilterParams {
   startDate: ISODate;
   endDate: ISODate;

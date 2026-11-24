@@ -4,6 +4,10 @@ interface TokenPayload {
   roles?: string[];
   authorities?: (string | { authority: string })[];
   exp?: number;
+  /** Servicios que el usuario puede atender (solo roles restringidos; el gateway los reenvía al servidor). */
+  services?: string[];
+  username?: string;
+  fullName?: string;
 }
 
 function parseToken(token: string): TokenPayload | null {
@@ -40,6 +44,29 @@ export function getRole(): UserRole | null {
   if (!raw) return null;
   const normalized = raw.replace(/^ROLE_/, '').toUpperCase() as UserRole;
   return VALID_ROLES.includes(normalized) ? normalized : null;
+}
+
+/**
+ * Servicios que el usuario puede atender según sus grupos. `null` = sin restricción (ADMIN / SUPERVISOR).
+ * Es solo para la interfaz (ocultar lo que no puede usar): quien lo hace cumplir es el servidor.
+ */
+export function getAllowedServiceIds(): string[] | null {
+  const role = getRole();
+  if (role === 'ADMIN' || role === 'SUPERVISOR') return null;
+  const token = localStorage.getItem('token');
+  return (token && parseToken(token)?.services) || [];
+}
+
+export interface SessionUser { username: string; fullName: string; role: UserRole }
+
+/** Quién tiene la sesión abierta, según el token (el servidor lo firmó al iniciar sesión). */
+export function getSessionUser(): SessionUser | null {
+  const token = localStorage.getItem('token');
+  const role = getRole();
+  const p = token ? parseToken(token) : null;
+  if (!p || !role) return null;
+  const username = p.username ?? '';
+  return { username, fullName: p.fullName?.trim() || username, role };
 }
 
 export function getUserId(): string | null {

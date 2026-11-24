@@ -144,6 +144,15 @@ Tamaños: `sm | md | lg | xl`
 </Select>
 ```
 
+### Checkbox
+```tsx
+<Checkbox label="Activo" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
+<Checkbox variant="card" label="Pediatría" checked={on} onChange={toggle} />   // listas de opciones: recuadro que se resalta
+<Checkbox label="Seleccionar todos" checked={all} indeterminate={some && !all} onChange={toggleAll} />
+```
+Mantiene el `<input type="checkbox">` nativo (teclado, lector de pantalla, formularios); la casilla visible usa `primary-600`
+al marcarse y el mismo anillo de foco que `Button`. No usar `<input type="checkbox">` suelto en pantallas nuevas.
+
 ### Modal
 
 ```tsx

@@ -688,6 +688,55 @@ export const es = {
   'devices.bloqueado_admin': 'El PIN está bloqueado por demasiados intentos fallidos.',
   'devices.desbloquear': 'Desbloquear',
   'devices.ultimo_perfil_confirm': 'Este es el último perfil activo de tipo {type}. Si lo desactivas o lo quitas, TODAS las pantallas de ese tipo volverán al modo abierto (sin PIN ni límite de servicios). ¿Continuar?',
+  // ── Cartelera, errores y exportación de reportes ──
+  'cartelera.reintento': 'Reintento {n} · próximo en {s} s',
+  'cartelera.sin_conexion_desde': 'Sin conexión desde {time}',
+  'cartelera.tocar_activar_sonido': 'Toque la pantalla para activar el sonido de los llamados',
+  'errors.last_admin': 'No se puede desactivar al último administrador activo.',
+  'errors.concurrent_modification': 'Otra persona modificó este registro. Recarga e inténtalo de nuevo.',
+  'errors.format_invalid': 'Formato de exportación no válido.',
+  'reportes.exportar_excel': 'Exportar Excel',
+  'reportes.exportar_pdf': 'Exportar PDF',
+  'reportes.pdf_truncado': 'Se muestran las primeras {n} de {total} filas. Usa Excel para el listado completo.',
+  'reportes.titulo_reporte': 'Reporte de turnos',
+  'reportes.generado': 'Generado el {date}',
+  'reportes.error_exportar_archivo': 'No se pudo generar el archivo.',
+  'reportes.hora_emision': 'Hora de emisión',
+  'reportes.t_espera_min': 'T. espera (min)',
+  'reportes.t_atencion_min': 'T. atención (min)',
+  'metricas.titulo_reporte': 'Métricas de atención',
+  'metricas.resumen': 'Resumen',
+  'metricas.indicador': 'Indicador',
+  'metricas.valor': 'Valor',
+  'metricas.hora': 'Hora',
+  'metricas.espera_max': 'Espera máx. (min)',
+  'metricas.espera_servicio_hora': 'Espera por servicio y hora',
+  'metricas.espera_servicio_hora_sub': 'Espera media en minutos según la hora de emisión del turno',
+  'metricas.leyenda_espera': 'Minutos de espera media. Más oscuro = más espera. "·" = sin turnos con espera registrada.',
+  'metricas.espera_celda': 'Espera media {avg} min · máx. {max} min · {n} turnos',
+  // ── Acceso por servicio (grupos) ──
+  'operator.sin_grupo_asignado': 'No perteneces a ningún grupo con servicios asignados. Pide a un administrador que te agregue a uno y vuelve a iniciar sesión.',
+  'operator.sin_consultorios_asignados': 'Los servicios de tus grupos no tienen consultorios disponibles.',
+  'operator.seleccionar_servicio': '— Seleccionar servicio —',
+  'errors.no_group_assigned': 'No perteneces a ningún grupo con servicios asignados. Pide a un administrador que te agregue a uno.',
+  'errors.service_not_assigned': 'No estás asignado a este servicio. Pide a un administrador que te agregue a un grupo que lo atienda.',
+  // ── Login: ver contraseña y credenciales de prueba ──
+  'login.mostrar_contrasena': 'Mostrar contraseña',
+  'login.ocultar_contrasena': 'Ocultar contraseña',
+  'login.credenciales_prueba': 'Credenciales de prueba',
+  'login.credenciales_prueba_desc': 'Cuentas de prueba del entorno de desarrollo.',
+  'login.nota_grupos': 'Operador y Médico solo ven los servicios de los grupos a los que pertenecen (Admin → Grupos).',
+  // ── Identidad de la sesión ──
+  'app.sesion_iniciada_como': 'Sesión iniciada como {name} ({role})',
+  // ── Cartelera: textos que estaban fijos ──
+  'cartelera.turno': 'Turno',
+  'cartelera.aviso': 'Aviso',
+  'cartelera.sin_conexion': 'Sin conexión',
+  'cartelera.zona': 'zona: {zone}',
+  // ── Operador: texto que estaba fijo ──
+  'operator.turno_codigo': 'Turno: {code}',
+  // ── Kiosko: texto que estaba fijo ──
+  'kiosk.bienvenido_nombre': 'Bienvenido, {name}',
 };
 
 export type MessageKey = keyof typeof es;

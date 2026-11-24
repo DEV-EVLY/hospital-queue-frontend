@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, RefreshCw, Edit2, Trash2, Save, ChevronRight, ChevronDown, FolderTree, FolderPlus, UserPlus, UserMinus,
 } from 'lucide-react';
-import { Card, CardHeader, Badge, Button, Input, Modal, Select } from '../../ui';
+import { Card, CardHeader, Badge, Button, Checkbox, Input, Modal, Select } from '../../ui';
 import { userGroupsApi, usersApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
 import { FormError, TH, TD } from './_shared';
 import type { UserGroup as Group, UserGroupMembership, User, MedicalService, Role } from '../../../types/api';
@@ -316,14 +316,8 @@ export const GruposTab: React.FC = () => {
                     {serviceChoices.map(s => {
                       const on = selected.serviceIds.includes(s.id);
                       return (
-                        <label key={s.id}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer select-none transition-colors ${
-                            on ? 'border-primary-300 bg-primary-50 text-primary-800' : 'border-surface-200 text-surface-600 hover:bg-surface-50'
-                          }`}>
-                          <input type="checkbox" checked={on} onChange={() => toggleService(s.id)}
-                            className="w-4 h-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500" />
-                          {s.name}
-                        </label>
+                        <Checkbox key={s.id} variant="card" label={s.name} checked={on}
+                          onChange={() => toggleService(s.id)} />
                       );
                     })}
                   </div>

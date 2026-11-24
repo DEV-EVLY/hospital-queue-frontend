@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Download } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { Card, CardHeader, CardFooter, Badge, PriorityBadge, Button, Spinner } from '../../ui';
 import { DatePicker } from '../../ui';
 import { Select } from '../../ui';
 import type { SelectOption } from '../../ui';
 import { reportsApi, medicalServicesApi, getErrorMessage } from '../../../services/api';
+import { exportXlsx, exportPdf } from '../../../services/reportExport';
+import { ticketsDoc, exportFileName } from '../../../services/reportDocs';
 import { TH, TD, fmtSeconds } from './_shared';
 import type { MedicalService, TicketReportRow, PriorityLevel, IssuanceChannel, ReportFilterParams } from '../../../types/api';
 import { tr, statusLabel, channelLabel, priorityOptions, channelOptions, withEmpty } from '../../../i18n';
@@ -37,6 +39,7 @@ export const ReportesTab: React.FC = () => {
   const [searched,     setSearched]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [queryError,   setQueryError]   = useState<string | null>(null);
+  const [exporting,    setExporting]    = useState<'xlsx' | 'pdf' | null>(null);
 
   useEffect(() => {
     medicalServicesApi.list()
@@ -81,6 +84,24 @@ export const ReportesTab: React.FC = () => {
     } catch (e: unknown) {
       setQueryError(getErrorMessage(e) || tr('reportes.error_exportar'));
     } finally { setLoading(false); }
+  };
+
+  /** Excel/PDF salen de las filas ya consultadas; si aún no se buscó, se consulta primero con los mismos filtros. */
+  const exportFile = async (kind: 'xlsx' | 'pdf') => {
+    const invalid = validateRange(fechaInicio, fechaFin);
+    if (invalid) { setQueryError(invalid); return; }
+    setExporting(kind);
+    setQueryError(null);
+    try {
+      const data = searched ? rows : await reportsApi.export(buildParams());
+      const list = Array.isArray(data) ? data : [];
+      if (!searched) { setRows(list); setSearched(true); }
+      const doc = ticketsDoc(list, fechaInicio, fechaFin);
+      if (kind === 'xlsx') await exportXlsx(exportFileName('reporte-turnos', fechaInicio, fechaFin, 'xlsx'), doc);
+      else await exportPdf(exportFileName('reporte-turnos', fechaInicio, fechaFin, 'pdf'), doc);
+    } catch (e: unknown) {
+      setQueryError(getErrorMessage(e, tr('reportes.error_exportar_archivo')));
+    } finally { setExporting(null); }
   };
 
   return (
@@ -130,6 +151,18 @@ export const ReportesTab: React.FC = () => {
             loading={loading} onClick={downloadCsv}
           >
             {tr('reportes.exportar_csv')}
+          </Button>
+          <Button
+            variant="secondary" size="sm" icon={<FileSpreadsheet className="w-4 h-4" />}
+            loading={exporting === 'xlsx'} disabled={exporting !== null || loading} onClick={() => exportFile('xlsx')}
+          >
+            {tr('reportes.exportar_excel')}
+          </Button>
+          <Button
+            variant="secondary" size="sm" icon={<FileText className="w-4 h-4" />}
+            loading={exporting === 'pdf'} disabled={exporting !== null || loading} onClick={() => exportFile('pdf')}
+          >
+            {tr('reportes.exportar_pdf')}
           </Button>
           <Button size="sm" loading={loading} onClick={runQuery}>
             {tr('reportes.buscar')}

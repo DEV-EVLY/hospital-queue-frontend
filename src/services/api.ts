@@ -267,7 +267,7 @@ export const devicesApi = {
   remove:   (id: UUID) => api.delete(`/devices/profiles/${id}`),
   setPin:   (pin: string) => api.put<Empty>('/devices/pin', { pin }),
   resetLock: () => api.post<Empty>('/devices/lock/reset'),
-  audit:    (limit = 50) => api.get<DeviceAuditEntry[]>(`/devices/audit?limit=${limit}`),
+  audit:    (page = 0, size = 10) => api.get<PageResponse<DeviceAuditEntry>>(`/devices/audit?page=${page}&size=${size}`),
 };
 
 export const userGroupsApi = {

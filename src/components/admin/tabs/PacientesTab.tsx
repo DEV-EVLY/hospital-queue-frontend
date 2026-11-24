@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, RefreshCw, Edit2, Save } from 'lucide-react';
-import { Card, Badge, Button, Input, Modal, Select, Spinner, Pagination } from '../../ui';
+import { Card, Badge, Button, Checkbox, Input, Modal, Select, Spinner, Pagination } from '../../ui';
 import { patientsApi, getErrorMessage } from '../../../services/api';
 import type { SelectOption } from '../../ui';
 import { FormError, TH, TD, normalizePhone, phoneError } from './_shared';
@@ -274,15 +274,8 @@ export const PacientesTab: React.FC = () => {
             { key: 'hasDisability', label: tr('pacientes.flag_discapacidad') },
             ...(editingId ? [{ key: 'active', label: tr('pacientes.flag_activo') }] : []),
           ] as Array<{ key: PatientFlag; label: string }>).map(({ key, label }) => (
-            <label key={key} className="flex items-center gap-2 text-sm text-surface-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form[key]}
-                onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
-                className="w-4 h-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
-              />
-              {label}
-            </label>
+            <Checkbox key={key} label={label} checked={form[key]}
+              onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))} />
           ))}
         </div>
       </Modal>

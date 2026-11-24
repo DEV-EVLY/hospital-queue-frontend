@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Clock, Flame, CheckCircle2, RefreshCw, UserX } from 'lucide-react';
+import { Users, Clock, Flame, CheckCircle2, RefreshCw, UserX, FileSpreadsheet, FileText } from 'lucide-react';
 import { Card, CardHeader, Badge, Button, DatePicker } from '../../ui';
-import { reportsApi } from '../../../services/api';
+import { reportsApi, getErrorMessage } from '../../../services/api';
+import { exportXlsx, exportPdf } from '../../../services/reportExport';
+import { metricsDoc, exportFileName } from '../../../services/reportDocs';
 import { KpiCard, FormError, TH, TD } from './_shared';
-import type { DashboardReport, ServiceBreakdown, PriorityLevel } from '../../../types/api';
+import type { DashboardReport, ServiceBreakdown, PriorityLevel, HourWait, ServiceHourWait } from '../../../types/api';
 import { tr, trp, priorityLabel } from '../../../i18n';
 
 // Local date (not UTC) so "hoy" matches the user's calendar day
@@ -23,12 +25,65 @@ const PRIORITY_VARIANT: Record<string, 'danger' | 'warning' | 'primary' | 'gray'
   URGENT: 'danger', PREFERENTIAL: 'warning', NORMAL: 'primary',
 };
 
+/**
+ * Mapa de calor: espera media (min) por servicio (filas) y hora de emisión (columnas).
+ * Cuanto más oscuro el ámbar, más espera. La primera fila resume todos los servicios.
+ */
+const WaitHeatmap: React.FC<{ rows: ServiceHourWait[]; overall: HourWait[] }> = ({ rows, overall }) => {
+  const hours = [...new Set([...rows.map(r => r.hour), ...overall.map(o => o.hour)])].sort((a, b) => a - b);
+  if (hours.length === 0) {
+    return <p className="text-sm text-surface-400 py-4 text-center">{tr('metricas.sin_datos')}</p>;
+  }
+  const services = [...new Map(rows.map(r => [r.serviceCode, r.serviceName] as const)).entries()];
+  const byKey = new Map(rows.map(r => [`${r.serviceCode}|${r.hour}`, r] as const));
+  const overallByHour = new Map(overall.map(o => [o.hour, o] as const));
+  const max = Math.max(1, ...rows.map(r => r.avgWaitMinutes), ...overall.map(o => o.avgWaitMinutes));
+  const shade = (avg: number) => `rgba(217, 119, 6, ${(0.1 + 0.75 * (avg / max)).toFixed(2)})`;
+
+  const cell = (key: string, c: HourWait | undefined) => c ? (
+    <td key={key} className="px-1 py-1 text-center font-mono text-xs text-surface-900 min-w-[44px]"
+        style={{ backgroundColor: shade(c.avgWaitMinutes) }}
+        title={tr('metricas.espera_celda', { avg: Math.round(c.avgWaitMinutes), max: Math.round(c.maxWaitMinutes), n: c.tickets })}>
+      {Math.round(c.avgWaitMinutes)}
+    </td>
+  ) : <td key={key} className="px-1 py-1 text-center text-xs text-surface-300 min-w-[44px]">·</td>;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate border-spacing-0.5">
+        <thead>
+          <tr>
+            <th className="sticky left-0 bg-white" />
+            {hours.map(h => <th key={h} className="px-1 text-[10px] font-semibold text-surface-500">{h}h</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th className="sticky left-0 bg-white pr-3 text-left text-xs font-bold text-surface-800 whitespace-nowrap">
+              {tr('common.todos_los_servicios')}
+            </th>
+            {hours.map(h => cell(`all|${h}`, overallByHour.get(h)))}
+          </tr>
+          {services.map(([code, name]) => (
+            <tr key={code}>
+              <th className="sticky left-0 bg-white pr-3 text-left text-xs font-medium text-surface-700 whitespace-nowrap">{name}</th>
+              {hours.map(h => cell(`${code}|${h}`, byKey.get(`${code}|${h}`)))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 text-[11px] text-surface-400">{tr('metricas.leyenda_espera')}</p>
+    </div>
+  );
+};
+
 export const MetricasTab: React.FC = () => {
   const [from,      setFrom]      = useState(todayStr());
   const [to,        setTo]        = useState(todayStr());
   const [dashboard, setDashboard] = useState<DashboardReport | null>(null);
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
+  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 
   const isToday   = from === todayStr() && to === todayStr();
   const isSingle  = from === to;
@@ -55,6 +110,18 @@ export const MetricasTab: React.FC = () => {
     return () => clearInterval(id);
   }, [load, to]);
 
+  const doExport = async (kind: 'xlsx' | 'pdf') => {
+    if (!dashboard) return;
+    setExporting(kind);
+    try {
+      const doc = metricsDoc(dashboard, from, to);
+      if (kind === 'xlsx') await exportXlsx(exportFileName('metricas', from, to, 'xlsx'), doc);
+      else await exportPdf(exportFileName('metricas', from, to, 'pdf'), doc);
+    } catch (e) {
+      setError(getErrorMessage(e, tr('reportes.error_exportar_archivo')));
+    } finally { setExporting(null); }
+  };
+
   const priority = Object.entries(dashboard?.priorityDistribution ?? {});
   const priorityTotal = priority.reduce((a, [, n]) => a + n, 0);
 
@@ -76,6 +143,16 @@ export const MetricasTab: React.FC = () => {
           {to === todayStr() && (
             <span className="text-xs text-surface-400 mb-2.5">{tr('metricas.se_actualiza_automaticamente_cada_30')}</span>
           )}
+          <div className="ml-auto flex gap-2 mb-0.5">
+            <Button variant="secondary" size="sm" icon={<FileSpreadsheet className="w-4 h-4" />}
+              loading={exporting === 'xlsx'} disabled={!dashboard || exporting !== null} onClick={() => doExport('xlsx')}>
+              {tr('reportes.exportar_excel')}
+            </Button>
+            <Button variant="secondary" size="sm" icon={<FileText className="w-4 h-4" />}
+              loading={exporting === 'pdf'} disabled={!dashboard || exporting !== null} onClick={() => doExport('pdf')}>
+              {tr('reportes.exportar_pdf')}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-4">
           {presets().map(p => {
@@ -169,6 +246,13 @@ export const MetricasTab: React.FC = () => {
           </div>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title={tr('metricas.espera_servicio_hora')} subtitle={tr('metricas.espera_servicio_hora_sub')} />
+        <div className="mt-4">
+          <WaitHeatmap rows={dashboard?.waitByServiceHour ?? []} overall={dashboard?.waitByHour ?? []} />
+        </div>
+      </Card>
 
       <Card padding="none">
         <CardHeader
