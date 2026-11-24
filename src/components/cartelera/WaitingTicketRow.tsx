@@ -23,7 +23,7 @@ export const WaitingTicketRow: React.FC<Props> = ({ ticket, position }) => (
     animate={{ opacity: 1, x: 0 }}
     exit={{ opacity: 0, x: -30, height: 0, marginBottom: 0 }}
     transition={{ duration: 0.3, delay: Math.min((position - 1) * 0.04, 0.3), ease: 'easeOut' }}
-    className={`border rounded-xl p-3 flex items-center justify-between ${PRIORITY_COLOR[ticket.priorityLevel] ?? PRIORITY_COLOR.NORMAL}`}
+    className={`shrink-0 border rounded-xl p-3 flex items-center justify-between ${PRIORITY_COLOR[ticket.priorityLevel] ?? PRIORITY_COLOR.NORMAL}`}
   >
     <div className="flex items-center gap-3">
       <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{position}</span>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
+import { Activity, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import { tr } from '../../i18n';
 
 const LiveStatus: React.FC<{ connected: boolean }> = ({ connected }) => (
@@ -42,12 +42,14 @@ interface Props {
   connected: boolean;
   audioEnabled: boolean;
   onToggleAudio: () => void;
-  onExit: () => void;
 }
 
-/** Cabecera: nombre del hospital, fecha y hora, estado del tiempo real, sonido y salida. */
+/**
+ * Cabecera: nombre del hospital, fecha y hora, estado del tiempo real y sonido.
+ * No hay botón de salida: es una pantalla pública. Para cambiar su perfil se usa el acceso oculto de `DeviceGate`.
+ */
 export const CarteleraHeader: React.FC<Props> = ({
-  zone, longDate, time, connected, audioEnabled, onToggleAudio, onExit,
+  zone, longDate, time, connected, audioEnabled, onToggleAudio,
 }) => (
   <header className="bg-[#0A1628]/90 border-b border-sky-500/20 px-8 py-4 flex items-center justify-between shrink-0 shadow-2xl">
     <div className="flex items-center gap-5">
@@ -75,13 +77,6 @@ export const CarteleraHeader: React.FC<Props> = ({
     <div className="flex items-center gap-3">
       <LiveStatus connected={connected} />
       <AudioToggle enabled={audioEnabled} onToggle={onToggleAudio} />
-      <button
-        onClick={onExit}
-        className="p-2.5 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-400 hover:text-white hover:border-slate-500 transition-all"
-        title={tr('cartelera.salir_cartelera')}
-      >
-        <X className="w-5 h-5" />
-      </button>
     </div>
   </header>
 );

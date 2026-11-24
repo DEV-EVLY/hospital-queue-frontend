@@ -12,7 +12,6 @@ import { useCarteleraFeed } from './useCarteleraFeed';
 import { useClock } from './useClock';
 
 export interface PantallaCarteleraProps {
-  onExitCartelera: () => void;
   /** Perfil del equipo: limita los servicios que se muestran (null o sin servicios = todos). */
   profile?: DeviceProfile | null;
 }
@@ -21,7 +20,7 @@ export interface PantallaCarteleraProps {
  * Pantalla pública de la sala de espera. Solo compone: los datos viven en `useCarteleraFeed`,
  * el sonido en `useCarteleraAudio` y cada zona de la pantalla es su propio componente.
  */
-export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCartelera, profile = null }) => {
+export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ profile = null }) => {
   const [zoneFilter] = useState(getZoneFilter);
   const clock = useClock();
   const audio = useCarteleraAudio();
@@ -39,7 +38,6 @@ export const PantallaCartelera: React.FC<PantallaCarteleraProps> = ({ onExitCart
         connected={feed.connected}
         audioEnabled={audio.enabled}
         onToggleAudio={audio.toggle}
-        onExit={onExitCartelera}
       />
 
       <main className="flex-1 flex overflow-hidden">

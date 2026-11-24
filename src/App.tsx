@@ -228,7 +228,7 @@ export const App: React.FC = () => {
 
       {/* Public fullscreen terminals — no nav wrapper */}
       <Route path="/kiosko"    element={<DeviceGate type="KIOSK">{(p, t) => <KioskoDispensador profile={p} deviceToken={t} />}</DeviceGate>} />
-      <Route path="/cartelera" element={<DeviceGate type="DISPLAY">{p => <PantallaCartelera onExitCartelera={() => {}} profile={p} />}</DeviceGate>} />
+      <Route path="/cartelera" element={<DeviceGate type="DISPLAY">{p => <PantallaCartelera profile={p} />}</DeviceGate>} />
 
       {/* Auth */}
       <Route path="/login" element={<LoginRoute onLoginSuccess={handleLoginSuccess} />} />

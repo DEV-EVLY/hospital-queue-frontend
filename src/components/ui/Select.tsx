@@ -26,6 +26,10 @@ interface SelectProps {
   value: string;
   onChange: (value: string) => void;
   label?: string;
+  /** Etiqueta accesible cuando no hay `label` visible (p. ej. un selector de barra con solo un icono). */
+  ariaLabel?: string;
+  /** Icono al inicio del botón (p. ej. un globo en el selector de idioma). */
+  icon?: React.ReactNode;
   placeholder?: string;
   error?: string;
   hint?: string;
@@ -48,7 +52,7 @@ const dropdownItemSize = {
 };
 
 export const SelectImpl = ({
-  options, value, onChange, label, placeholder = 'Seleccionar...',
+  options, value, onChange, label, ariaLabel, icon, placeholder = 'Seleccionar...',
   error, hint, fullWidth, disabled, size = 'md', className,
 }: SelectProps) => {
   const [open, setOpen] = useState(false);
@@ -154,6 +158,7 @@ export const SelectImpl = ({
       <button
         type="button"
         aria-labelledby={label ? labelId : undefined}
+        aria-label={label ? undefined : ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
@@ -172,8 +177,11 @@ export const SelectImpl = ({
           !disabled && 'cursor-pointer',
         )}
       >
-        <span className={clsx('truncate', !selectedLabel && 'text-surface-400')}>
-          {selectedLabel ?? placeholder}
+        <span className="flex items-center gap-1.5 min-w-0">
+          {icon && <span className="shrink-0 text-surface-400" aria-hidden>{icon}</span>}
+          <span className={clsx('truncate', !selectedLabel && 'text-surface-400')}>
+            {selectedLabel ?? placeholder}
+          </span>
         </span>
         <motion.span
           animate={{ rotate: open ? 180 : 0 }}

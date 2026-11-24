@@ -34,7 +34,7 @@ export const WaitingQueuePanel: React.FC<{ queue: WaitingTicket[] }> = ({ queue 
     <ul className="flex flex-col gap-2 overflow-y-auto flex-1 pr-1 scrollbar-hide">
       <AnimatePresence initial={false}>
         {queue.length === 0
-          ? <EmptyQueue />
+          ? <EmptyQueue key="empty-queue" />
           : queue.map((ticket, i) => <WaitingTicketRow key={ticket.id} ticket={ticket} position={i + 1} />)}
       </AnimatePresence>
     </ul>

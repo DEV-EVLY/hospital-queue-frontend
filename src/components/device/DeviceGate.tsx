@@ -28,7 +28,9 @@ const applyLanguage = (p: DeviceProfile) => { if (isLang(p.language)) setLang(p.
  * Envuelve un kiosko o una cartelera: resuelve el perfil con el que está vinculado el equipo.
  * - Sin perfiles activos de ese tipo → modo abierto (comportamiento anterior).
  * - Con perfiles → el equipo debe estar vinculado (PIN); mientras no lo esté se muestra la pantalla de vinculación.
- * - Tocar 5 veces la esquina superior izquierda (el logo) abre la vinculación para cambiar o quitar el perfil.
+ * - Acceso oculto (pide el PIN) para cambiar o quitar el perfil, sin ningún botón visible en la pantalla pública:
+ *     · 5 toques o clics seguidos en la esquina superior izquierda (el logo), o
+ *     · el atajo de teclado Alt + Mayús + P (equipos con teclado).
  * Cada consulta renueva el token del equipo. Si el servidor no responde, se sigue usando el último perfil guardado.
  */
 export const DeviceGate: React.FC<Props> = ({ type, children }) => {
@@ -78,6 +80,15 @@ export const DeviceGate: React.FC<Props> = ({ type, children }) => {
     const id = setInterval(() => { void resolve(); }, REFRESH_MS);
     return () => clearInterval(id);
   }, [resolve]);
+
+  // Atajo de teclado para equipos con teclado físico: Alt + Mayús + P
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.shiftKey && e.code === 'KeyP') { e.preventDefault(); setDialog(true); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const handlePaired = (device: PairedDevice) => {
     savePaired(type, device);
