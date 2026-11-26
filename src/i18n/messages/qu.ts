@@ -704,4 +704,13 @@ export const qu: Partial<Record<MessageKey, string>> = {
   'cartelera.zona': 'suyu: {zone}',
   'operator.turno_codigo': 'Turno: {code}',
   'kiosk.bienvenido_nombre': 'Allin hamusqa, {name}',
+  'medicos.n_registrados.one': '{n} qillqasqa',
+  'medicos.n_registrados.other': '{n} qillqasqa',
+  'medicos.n_registradas.one': '{n} qillqasqa',
+  'medicos.n_registradas.other': '{n} qillqasqa',
+  'catalogo.n_servicios_registrados.one': '{n} llamkay qillqasqa',
+  'catalogo.n_servicios_registrados.other': '{n} llamkaykuna qillqasqa',
+  'catalogo.n_consultorios_registrados.one': '{n} hampina wasi qillqasqa',
+  'catalogo.n_consultorios_registrados.other': '{n} hampina wasikuna qillqasqa',
+  'devices.nombre_obligatorio': 'Perfilpa sutin necesarioqa.',
 };

@@ -704,4 +704,13 @@ export const pt: Partial<Record<MessageKey, string>> = {
   'cartelera.zona': 'zona: {zone}',
   'operator.turno_codigo': 'Senha: {code}',
   'kiosk.bienvenido_nombre': 'Bem-vindo(a), {name}',
+  'medicos.n_registrados.one': '{n} registrado',
+  'medicos.n_registrados.other': '{n} registrados',
+  'medicos.n_registradas.one': '{n} registrada',
+  'medicos.n_registradas.other': '{n} registradas',
+  'catalogo.n_servicios_registrados.one': '{n} serviço registrado',
+  'catalogo.n_servicios_registrados.other': '{n} serviços registrados',
+  'catalogo.n_consultorios_registrados.one': '{n} consultório registrado',
+  'catalogo.n_consultorios_registrados.other': '{n} consultórios registrados',
+  'devices.nombre_obligatorio': 'O nome do perfil é obrigatório.',
 };

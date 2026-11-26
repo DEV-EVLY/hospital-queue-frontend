@@ -737,6 +737,18 @@ export const es = {
   'operator.turno_codigo': 'Turno: {code}',
   // ── Kiosko: texto que estaba fijo ──
   'kiosk.bienvenido_nombre': 'Bienvenido, {name}',
+  // ── Médicos: contadores que estaban fijos ──
+  'medicos.n_registrados.one': '{n} registrado',
+  'medicos.n_registrados.other': '{n} registrados',
+  'medicos.n_registradas.one': '{n} registrada',
+  'medicos.n_registradas.other': '{n} registradas',
+  // ── Catálogo: contadores que estaban fijos ──
+  'catalogo.n_servicios_registrados.one': '{n} servicio registrado',
+  'catalogo.n_servicios_registrados.other': '{n} servicios registrados',
+  'catalogo.n_consultorios_registrados.one': '{n} consultorio registrado',
+  'catalogo.n_consultorios_registrados.other': '{n} consultorios registrados',
+  // ── Dispositivos: mensaje propio de nombre obligatorio ──
+  'devices.nombre_obligatorio': 'El nombre del perfil es obligatorio.',
 };
 
 export type MessageKey = keyof typeof es;
